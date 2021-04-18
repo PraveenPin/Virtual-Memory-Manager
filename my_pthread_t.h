@@ -21,11 +21,6 @@
 #include <time.h>
 #include "list.h"
 
-/* Memory Manager Code Starts Here*/
-#define malloc(x) myallocate(x, __FILE__, __LINE__, THREADREQ)
-#define free(x) mydeallocate(x, __FILE__, __LINE__, THREADREQ)
-/* Memory Manager Code Ends Here*/
-
 #define STACK_SIZE (1024*1024)
 #define NUMBER_OF_LEVELS 3
 #define MAX_THREADS 128

@@ -6,6 +6,7 @@
 
 #include <signal.h>
 #include "my_pthread_t.h"
+#include "memory_manager.h"
 #include "queue.h"
 
 #define CANNOT_DESTORY_MUTEX_ERROR -2

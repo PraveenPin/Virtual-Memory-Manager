@@ -103,19 +103,19 @@ int main(int argc, const char * argv[]) {
     my_pthread_create(&t2, NULL, &threadFunc2,NULL);
     my_pthread_create(&t3, NULL, &threadFunc3,NULL);
     my_pthread_create(&t4, NULL, &threadFunc4,NULL);
-    my_pthread_create(&t5, NULL, &threadFunc,NULL);
-    my_pthread_create(&t6, NULL, &threadFunc,NULL);
-    my_pthread_create(&t7, NULL, &threadFunc,NULL);
-    my_pthread_create(&t8, NULL, &threadFunc,NULL);
+    // my_pthread_create(&t5, NULL, &threadFunc,NULL);
+    // my_pthread_create(&t6, NULL, &threadFunc,NULL);
+    // my_pthread_create(&t7, NULL, &threadFunc,NULL);
+    // my_pthread_create(&t8, NULL, &threadFunc,NULL);
 
     my_pthread_join(t1, &retVal1);
     my_pthread_join(t2, &retVal2);
-    my_pthread_join(t3, &retVal3);
-    my_pthread_join(t4, &retVal4);
-    my_pthread_join(t5,NULL);
-    my_pthread_join(t6,NULL);
-    my_pthread_join(t7,NULL);
-    my_pthread_join(t8,NULL);
+    // my_pthread_join(t3, &retVal3);
+    // my_pthread_join(t4, &retVal4);
+    // my_pthread_join(t5,NULL);
+    // my_pthread_join(t6,NULL);
+    // my_pthread_join(t7,NULL);
+    // my_pthread_join(t8,NULL);
     printf("Retvals - %d %d %d %d\n",retVal1,retVal2,retVal3, retVal4);
     printf("Global variables - %d %d\n",global_var1,global_var2);
     
