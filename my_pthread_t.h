@@ -10,18 +10,20 @@
 #ifndef MY_PTHREAD_T_H
 #define MY_PTHREAD_T_H
 
+#define _GNU_SOURCE
+
 /* include lib header files that you need here: */
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ucontext.h>
 #include <sys/time.h>
 #include <time.h>
-#include "list.h"
 
-#define STACK_SIZE (1024*1024)
+#define STACK_SIZE (2*1024)
 #define NUMBER_OF_LEVELS 3
 #define MAX_THREADS 128
 
@@ -50,7 +52,53 @@ typedef struct threadControlBlock {
 	int firstCycle;
 
 	int hasMutex;
+	int mallocFrame;
+	struct pageMetaData *firstPage;
 } TCB; 
+
+struct ListNode{
+    long int tid;
+    struct ListNode *next;
+};
+
+typedef struct {
+    struct ListNode *front;
+    struct ListNode *back;
+}TidQueue;
+
+typedef struct {
+    struct Node *front;
+    struct Node *back;
+}TCBQueue;
+
+struct Node{
+    TCB *thread;
+    struct Node *next;
+};
+
+typedef struct{
+    struct Node *front;
+    struct Node *back;
+}Queue;
+
+int addToQueue(TCB* thread, Queue *queue);
+
+int removeFromQueue(Queue *queue, TCB **thread);
+
+int isQueueEmpty(Queue *queue);
+
+void stateOfQueue(Queue *queue);
+
+void deleteAParticularNodeFromQueue(my_pthread_t tid, Queue *queue, TCB **thread);
+
+
+int addToTidQueue(long int tid, TidQueue *waitingThreads);
+
+int isThisThreadWaitingForMutex(long int tid, TidQueue *waitingThreads);
+
+void emptyTidQueue(TidQueue *waitingThreads);
+
+void stateOfTidQueue(TidQueue *waitingThreads);
 
 /* mutex struct definition */
 typedef struct my_pthread_mutex_t {
@@ -90,6 +138,9 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex);
 
 /* destroy the mutex */
 int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex);
+
+
+
 
 #endif
 

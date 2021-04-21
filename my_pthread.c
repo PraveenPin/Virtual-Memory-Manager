@@ -7,7 +7,12 @@
 #include <signal.h>
 #include "my_pthread_t.h"
 #include "memory_manager.h"
-#include "queue.h"
+
+/*For Memory Management*/
+extern MemoryEntry *head;
+extern MemoryEntry *end;
+static const int codeVal = 1234567890;
+extern int memoryFlag;
 
 #define CANNOT_DESTORY_MUTEX_ERROR -2
 #define DOES_NOT_HAVE_MUTEX_LOCK -3
@@ -18,12 +23,156 @@
 struct itimerval timer_val;
 struct sigaction act_timer;
 int threadCount=0;
+TCB* running;
 static Queue queue[NUMBER_OF_LEVELS];
 static Queue waitingQueue, finishedQueue;
-static TCB* running;
 static int totalCyclesElapsed = 0;
 static long timeSinceLastMaintenance = 0;
 int lengthOfLeastPriorityQueue = 0;
+
+
+/*List Implementation*/
+int addToTidQueue(long int tid, TidQueue *tidQueue){
+    if(tidQueue->front == 0){
+        tidQueue->front = myallocate((sizeof(struct ListNode)), __FILE__,__LINE__, LIBRARYREQ);
+        tidQueue->front->tid = tid;
+        tidQueue->back = tidQueue->front;
+        tidQueue->front->next = 0;
+        tidQueue->back->next = 0;
+    }
+    else{
+        tidQueue->back->next = myallocate((sizeof(struct ListNode)), __FILE__,__LINE__, LIBRARYREQ);
+        tidQueue->back = tidQueue->back->next;
+        tidQueue->back->tid = tid;
+        tidQueue->back->next = 0;
+    }
+    
+    return 1;
+}
+
+int isThisThreadInWaitingForMutex(long int tid, TidQueue *waitingThreads){
+	struct ListNode* node = waitingThreads->front;
+	while(node != NULL){
+		if (node->tid == tid){
+			return 1;
+		}
+		node = node->next;
+	}
+	return 0;
+}
+
+void emptyTidQueue(TidQueue *waitingThreads){
+    struct ListNode *tempNode = waitingThreads->front;
+    while(tempNode != NULL){
+        struct ListNode* buf = tempNode->next;
+        free(tempNode);
+        tempNode=buf;
+    }
+}
+
+
+void stateOfTidQueue(TidQueue *waitingThreads){
+    struct ListNode *tempNode = waitingThreads->front;
+    if(tempNode != NULL){
+        printf("Waiting thread IDs on mutex: \t");
+    }
+    while(tempNode != NULL){
+        printf("%ld\t",tempNode->tid);
+        tempNode = tempNode->next;
+    }
+    printf("\n");
+}
+
+
+/*Queue implementation*/
+int addToQueue(TCB *thread, Queue *queue){
+    if(queue->front == 0){
+        queue->front = myallocate((sizeof(struct Node)), __FILE__,__LINE__, LIBRARYREQ);
+        queue->front->thread = thread;
+        queue->back = queue->front;
+        queue->front->next = 0;
+        queue->back->next = 0;
+    }
+    else{
+        queue->back->next = myallocate((sizeof(struct Node)), __FILE__,__LINE__, LIBRARYREQ);
+        queue->back = queue->back->next;
+        queue->back->thread = thread;
+        queue->back->next = 0;
+    }
+    
+    return 1;
+}
+
+int removeFromQueue(Queue *queue, TCB **thread){
+    if(queue->front == 0){
+        return 0;
+    }
+    if(queue->front != queue->back){
+        *thread = queue->front->thread;
+        struct Node *tempNode = queue->front;
+        queue->front = queue->front->next;
+        free(tempNode);
+    }
+    else{
+        *thread = queue->front->thread;
+        free(queue->front);
+        queue->front = 0;
+        queue->back = 0;
+    }
+    return 1;
+}
+
+int isQueueEmpty(Queue *queue){
+    if(queue->front == 0){
+        return 1;
+    }
+    return 0;
+}
+
+void stateOfQueue(Queue *queue){
+    struct Node *tempNode = queue->front;
+    if(tempNode != NULL){
+        printf("Queue %d ->\t",queue->front->thread->priority);
+    }
+    while(tempNode != NULL){
+        printf("%ld\t",tempNode->thread->id);
+        tempNode = tempNode->next;
+    }
+    printf("\n");
+}
+
+void deleteAParticularNodeFromQueue(my_pthread_t tid, Queue *queue, TCB **thread){
+    struct Node *tempNode = queue->front;
+    struct Node *prevNode = NULL;
+    while(tempNode != NULL && tempNode->thread->id != tid){
+        prevNode = tempNode;
+        tempNode = tempNode->next;
+    }
+    //printf("queue->front:%d queue->back:%d tempNode:%d prevNode: %d",queue->front, queue->back, tempNode, prevNode);
+    if(tempNode != NULL && tempNode->thread->id == tid){        
+        *thread = tempNode->thread;
+        
+        if(queue->front == queue->back){
+            queue->front = 0;
+            queue->back = 0;
+        }
+        else{
+            if(tempNode == queue->front){
+                queue->front = tempNode->next;
+            }
+            else if(tempNode == queue->back){
+                queue->back = prevNode;
+                queue->back->next = NULL;
+            }
+            else{             
+                prevNode->next = tempNode->next;
+            }
+        }
+    }
+    else{
+        *thread = NULL;
+    }
+}
 
 TCB* findThreadById(my_pthread_t id, Queue *someQueue){
 	struct Node* node = someQueue->front;
@@ -176,7 +325,7 @@ void initTimerInterrupt(int i){
 	timer_val.it_interval.tv_sec = 0;
 	
 	if(setitimer(ITIMER_VIRTUAL, &timer_val,NULL) == -1){
-		fprintf(stderr,"Error calling setitimer for thread %ld\n", running->id);
+		printf(stderr,"Error calling setitimer for thread %ld\n", running->id);
 		printf("Error in Setting Timer\n");
 	}
 }
@@ -264,7 +413,7 @@ void scheduler(int sig){
 
 			if(isQueueEmpty(&queue[oldThread->priority])){
 				printf("Problem with the queue or thread\n ");
-				fprintf(stderr,"Problem with adding current thread to ready queue\n");
+				printf(stderr,"Problem with adding current thread to ready queue\n");
 			}
 		}
 		// stateOfQueue(&queue[oldThread->priority]);
@@ -287,7 +436,7 @@ void scheduler(int sig){
 			clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&(nextThreadToRun->resume));
 			initTimerInterrupt(nextTimeSlice);
 			if(swapcontext(oldThread->context, nextThreadToRun->context) == -1){
-				fprintf(stderr,"Insufficient stack space left\n");
+				printf(stderr,"Insufficient stack space left\n");
 			}
 		}
 		
@@ -302,7 +451,7 @@ void setupSignal(){
 	sigemptyset(&act_timer.sa_mask);
 	sigaddset(&act_timer.sa_mask,SIGVTALRM);
 	if(sigaction(SIGVTALRM,&act_timer,NULL)){
-		fprintf(stderr, "Error in sigaction \n");
+		printf(stderr, "Error in sigaction \n");
 		printf("************** Error in sigaction ************** \n");
 		exit(1);
 	}
@@ -324,22 +473,29 @@ void freeThread(TCB *threadToFree){
 int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*function)(void*), void * arg) {
 		
 	if(threadCount == 0){
+		memoryFlag = 0;
 		//creating main user thread
-		TCB *mainThread = (TCB*)malloc(sizeof(TCB));
+		// printf("Caling for main thread\n");
+		TCB *mainThread = (TCB*)myallocate(sizeof(TCB), __FILE__,__LINE__, LIBRARYREQ);
+		memoryFlag = 0;
+		// printf("Mainthread %p with size %d\n",mainThread,sizeof(TCB));
 		if(mainThread == NULL){
-			fprintf(stderr, "Failure to allocate memory for main thread\n");
+			printf("Failure to allocate memory for main thread\n");
 			return -1;
 		}
 		mainThread->id = threadCount++;
 		
-		mainThread->context = (ucontext_t*)malloc(sizeof(ucontext_t));
+		mainThread->context = (ucontext_t*)myallocate(sizeof(ucontext_t), __FILE__,__LINE__, LIBRARYREQ);
+		memoryFlag = 0;
 		if(mainThread->context == NULL){
-			fprintf(stderr, "Failure to allocate memory for mainThread context\n");
+			printf("Failure to allocate memory for mainThread context\n");
 			return -1;
 		}
+		// printf("Caling for ucontext %p\n",mainThread->context);
+		
 
 		if(getcontext(mainThread->context) == -1){
-			fprintf(stderr,"Failure to initialise execution context\n");
+			printf("Failure to initialise execution context\n");
 			return -1;
 		}
 		mainThread->waiting_id = -1;
@@ -349,6 +505,7 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 		mainThread->mutex_acquired_thread_id = -1;
 		mainThread->hasMutex = 0;
 		mainThread->firstCycle = 1;
+		mainThread->firstPage = NULL;
 		mainThread->priority = 0;
 		mainThread->timeSpentInMilliSeconds = 0;
 		mainThread->timeSpentInSeconds = 0;
@@ -366,23 +523,24 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 		clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&(running->start));
 		clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&(running->resume));
 		running = mainThread;
-		// printf("Main Thread\n");
 
 		//setting the timer interrupt and signal handler
 		setupSignal();
 		initTimerInterrupt(BASE_TIME_QUANTA);
 	}
 
-	TCB *thread = (TCB*)malloc(sizeof(TCB));
+	TCB *thread = (TCB*)myallocate(sizeof(TCB), __FILE__,__LINE__, LIBRARYREQ);
+	memoryFlag = 0;
 	if(thread == NULL){
-		fprintf(stderr, "Failure to allocate memory for TCB of thread\n");
+		printf(stderr, "Failure to allocate memory for TCB of thread\n");
 		return -1;
 	}
 
 	//Intialise TCB
-	thread->context = (ucontext_t*)malloc(sizeof(ucontext_t));
+	thread->context = (ucontext_t*)myallocate(sizeof(ucontext_t),__FILE__,__LINE__,LIBRARYREQ);
+	memoryFlag = 0;
 	if(thread->context == NULL){
-		fprintf(stderr, "Failure to allocate memory for thread context\n");
+		printf(stderr, "Failure to allocate memory for thread context\n");
 		return -1;
 	}
 
@@ -392,6 +550,7 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 	thread->mutex_acquired_thread_id = -1;
 	thread->hasMutex = 0;
 	thread->firstCycle = 1;
+	thread->firstPage = NULL;
 	thread->priority = 0;
 	thread->timeSpentInMilliSeconds = 0;
 	thread->timeSpentInSeconds = 0;
@@ -409,12 +568,12 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 
 	thread->stack =  malloc(STACK_SIZE);
 	if(thread->stack == NULL){
-		fprintf(stderr,"Cannot allocate memory for stack\n");
+		printf(stderr,"Cannot allocate memory for stack\n");
 		return -1;
 	}
 
 	if(getcontext(thread->context) == -1){
-		fprintf(stderr,"Failure to initialise execution context\n");
+		printf(stderr,"Failure to initialise execution context\n");
 		return -1;
 	}
 
@@ -499,7 +658,7 @@ int my_pthread_join(my_pthread_t tid, void **value_ptr) {
 		if(threadToWaitOn == NULL){
 			threadToWaitOn = findThreadById(tid, &finishedQueue);
 			if(threadToWaitOn == NULL){
-				fprintf(stderr,"No thread with id %ld to wait on in any queue\n",tid);
+				printf(stderr,"No thread with id %ld to wait on in any queue\n",tid);
 				return NO_THREAD_ERROR;
 			}
 			else{
@@ -513,16 +672,16 @@ int my_pthread_join(my_pthread_t tid, void **value_ptr) {
 		}
 	}
 	if(running == NULL){
-		fprintf(stderr,"Problem with accessing current thread\n");
+		printf(stderr,"Problem with accessing current thread\n");
 		return -1;
 	}
 	if(running->id == tid){
-		fprintf(stderr,"Cannot wait on itself\n");
+		printf(stderr,"Cannot wait on itself\n");
 		return -1;
 	}
 	printf("Thread %ld started waiting on thread %ld\n",running->id,threadToWaitOn->id);
 	if(threadToWaitOn->waiting_id >= 0 ){
-		fprintf(stderr,"Some other thread has joined this thread %ld\n",tid);
+		printf(stderr,"Some other thread has joined this thread %ld\n",tid);
 		return CANNOT_JOIN_ERROR;
 	}
 	threadToWaitOn->waiting_id = running->id;
@@ -574,7 +733,7 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
 			mutex->waitingThreads.front = NULL;
 			mutex->waitingThreads.back = NULL;
             if(mutex->owningThread  == -1 ) {
-                fprintf(stderr,"Some error occurred in allocating mutex to thread");
+                printf(stderr,"Some error occurred in allocating mutex to thread");
                 return -1;
             }
 	        running->hasMutex++;
