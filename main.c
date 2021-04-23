@@ -4,12 +4,16 @@
 #include <sys/time.h>
 #include <signal.h>
 
-#define SIZE 5
-#define S 5
+#define SIZE 1000
+#define S 500
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
 typedef struct dummyStruct {
 	long long int i;
+	long long int j;
+	long long int k;
+	long long int l;
+	long long int m;
 	char c;
 } dummy;
 
@@ -38,7 +42,7 @@ int threadFunc1(void*g) {
 
 	int *ptrs[S];
     for(i = 0; i < S; i++){
-		ptrs[i] = malloc(sizeof(int)*50*4*1024);
+		ptrs[i] = malloc(sizeof(int));
         printf("New malloc pointer fot thread 1 %p\n",ptrs[i]);
 		if(ptrs[i] != NULL){
 		    *ptrs[i] = i;
@@ -68,10 +72,13 @@ void threadFunc2() {
 
     dummy * ptrs[SIZE];
 	for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(dummy));
-        printf("New malloc pointer fot thread 2 %p\n",ptrs[i]);
-		(*ptrs[i]).i = i;
-		(*ptrs[i]).c = 'a';
+		ptrs[i] = malloc(sizeof(dummy)*50);
+        printf("New malloc pointer fot thread 2 %p of size %zd\n",ptrs[i],sizeof(dummy));
+        ptrs[i]->i = 11;
+        ptrs[i]->j = 11;
+        ptrs[i]->k = 11;
+        ptrs[i]->l = 11;
+        ptrs[i]->m = 11;
 	}
 
 	my_pthread_yield();
@@ -135,8 +142,8 @@ int main(int argc, const char * argv[]) {
     // my_pthread_mutex_init(&mutex, NULL);
     // my_pthread_mutex_init(&mutex2, NULL);
     int *retVal1, *retVal2, *retVal3, *retVal4;
-    //Create threads
-    my_pthread_create(t1, NULL, &threadFunc1,NULL);
+    // Create threads
+    my_pthread_create(t1, NULL, &threadFunc2,NULL);
     my_pthread_create(t2, NULL, &threadFunc2,NULL);
     my_pthread_create(&t3, NULL, &threadFunc3,NULL);
     my_pthread_create(&t4, NULL, &threadFunc4,NULL);

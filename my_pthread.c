@@ -459,6 +459,8 @@ void Start_Thread(void *(*start)(void *), void *arg){
 void freeThread(TCB *threadToFree){
 	printf("Freeing up space of thread - %d\n",threadToFree->id);
 	if(threadToFree != NULL){
+		mydeallocate(threadToFree->stack, __FILE__, __LINE__, LIBRARYREQ);
+		mydeallocate(threadToFree->context, __FILE__, __LINE__, LIBRARYREQ);
 		mydeallocate(threadToFree, __FILE__, __LINE__, LIBRARYREQ);
 	}
 }
