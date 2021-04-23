@@ -596,6 +596,7 @@ int my_pthread_yield() {
 	}
 	else if( running->state == FINISHED){
 		// printf("Adding the current finished thread to finished queue\n");
+		removePages(running->id);
 		addToQueue(running,&finishedQueue);
 	}
 	// printf("Raising a signal to call scheduler\n");

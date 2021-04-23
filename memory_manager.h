@@ -39,7 +39,7 @@ typedef struct metaDataBlock {
 
 
 typedef struct pageTableEntry{
-  unsigned int tid;
+  int tid;
   unsigned int index;
 } PTEntry;
 

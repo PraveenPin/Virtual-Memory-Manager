@@ -4,11 +4,12 @@
 #include <sys/time.h>
 #include <signal.h>
 
-#define SIZE 10
+#define SIZE 5
+#define S 5
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
 typedef struct dummyStruct {
-	int i;
+	long long int i;
 	char c;
 } dummy;
 
@@ -35,9 +36,9 @@ int threadFunc1(void*g) {
         busyWait(1);
     }
 
-	long long int * ptrs[SIZE];
-    for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(long long int));
+	int *ptrs[S];
+    for(i = 0; i < S; i++){
+		ptrs[i] = malloc(sizeof(int)*50*4*1024);
         printf("New malloc pointer fot thread 1 %p\n",ptrs[i]);
 		if(ptrs[i] != NULL){
 		    *ptrs[i] = i;
@@ -48,7 +49,7 @@ int threadFunc1(void*g) {
 		my_pthread_yield();
 	}
 
-	for(i = 0; i < SIZE; i++){
+	for(i = 0; i < S; i++){
         printf("Freeing malloc pointer fot thread 1 %p\n",ptrs[i]);
 		free(ptrs[i]);
 

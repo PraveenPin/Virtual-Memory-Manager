@@ -46,7 +46,7 @@ typedef struct threadControlBlock {
 	void **retVal; //return value from the function
 	int waiting_id; //Thread id of the thread waiting on this thread
 
-    my_pthread_t mutex_acquired_thread_id;
+    int mutex_acquired_thread_id;
     int priority; // thread priority
 	double timeSpentInSeconds,timeSpentInMilliSeconds,totalTimeInSecs,totalTimeInMilliSecs;
 	struct timespec created, start,resume, finish;
@@ -104,7 +104,7 @@ void stateOfTidQueue(TidQueue *waitingThreads);
 typedef struct my_pthread_mutex_t {
 	int isLocked;
 	int mutexattr;
-    my_pthread_t owningThread;
+    int owningThread;
     TidQueue waitingThreads;
 } my_pthread_mutex_t;
 

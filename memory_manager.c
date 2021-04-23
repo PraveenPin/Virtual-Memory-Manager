@@ -36,6 +36,16 @@ void printPageTable(int howMany){
     return;
   PTEntry *ptr = MemoryPageTableFront;
   int i = 0;
+  printf("   Memory Page Table    \n");
+  for(i = 0; i < howMany; i++){
+    printf("i: %d - tid: %d, index - %d\n", i, (*ptr).tid, (*ptr).index);
+    ptr += 1;
+  }
+  printf("\n");
+  if(SwapFilePageTableFront == NULL)
+    return;
+  ptr = SwapFilePageTableFront;
+  printf("   Swap Page Table    \n");
   for(i = 0; i < howMany; i++){
     printf("i: %d - tid: %d, index - %d\n", i, (*ptr).tid, (*ptr).index);
     ptr += 1;
@@ -56,10 +66,12 @@ void printPageTable(int howMany){
 void removePages(unsigned int tid){
   PTEntry * ptr = MemoryPageTableFront;
 
+  printf("Removing pages for thread %d\n",tid);
+
   int i = 0;
   for(i = 0; i < THREAD_PAGES; i++){
     if((*ptr).tid == tid){
-      (*ptr).tid = 0;
+      (*ptr).tid = -1;
       (*ptr).index = 0;
     }
     ptr += 1;
@@ -68,7 +80,7 @@ void removePages(unsigned int tid){
   ptr = SwapFilePageTableFront;
   for(i = 0; i < TOTAL_FILE_PAGES; i++){
     if((*ptr).tid == tid){
-      (*ptr).tid = 0;
+      (*ptr).tid = -1;
       (*ptr).index = 0;
     }
     ptr += 1;
@@ -231,6 +243,7 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     printf("Trying to access memory which is out of bounds (Main Memory)\n");
     // actual segfault
     enableInterrupts();
+    exit(-1);
     return;
   }
 
@@ -266,6 +279,7 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     // In swapfile
     swapIndex = 0;
     for(swapIndex = 0; swapIndex < TOTAL_FILE_PAGES; swapIndex++){
+      printf("checking in sawp fromt tbale\n");
       if(SwapFilePageTableFront[swapIndex].tid == tid && SwapFilePageTableFront[swapIndex].index == index){
         printf("Swapping in page number %d from swap file into frame number %d\n",swapIndex,index);
         memoryToSwapFileSwapper(index, swapIndex);
@@ -296,6 +310,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
   // Place as new front
 	if((*frontPtr) == NULL) {
     (*frontPtr) = (MDBlock *) memStart;
+      printf("Placing at the front initially for size %d\n",size);
     return createMeta((void *) memStart, size, NULL);
   }
 
@@ -303,6 +318,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
   if( ((char *) (*frontPtr)) - memStart >= size + (sizeof(MDBlock))){
     MDBlock * temp = (*frontPtr);
     (*frontPtr) = (MDBlock *) memStart;
+      printf("Placing at the front for size %d\n",size);
     return createMeta((void *) memStart, size, temp);
   }
 
@@ -314,6 +330,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
     if ( ((char *) (*ptr).next) - ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size) >= size + (sizeof(MDBlock))) {
       MDBlock * temp = (*ptr).next;
       (*ptr).next = (MDBlock *) ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size);
+      printf("Placing in the middle for size %d\n",size);
       return createMeta((void *) (*ptr).next, size, temp);
     }
 
@@ -323,6 +340,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
   // Place at the end
   if ( (memStart + memSize) - ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size) >= size + (sizeof(MDBlock))) {
     (*ptr).next = (MDBlock *) ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size);
+    printf("Placing at the end\n");
     return createMeta((void *) (*ptr).next, size, NULL);
   }
 
@@ -399,7 +417,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     PTEntry *temp = MemoryPageTableFront;
     i = 0;
     for(i = 0; i < THREAD_PAGES; i++){
-      temp->tid = 0;
+      temp->tid = -1;
       temp->index = 0;
       temp = temp + 1;
     }
@@ -410,7 +428,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
 
     temp = SwapFilePageTableFront;
     for(i = 0; i < TOTAL_FILE_PAGES; i++){
-      temp->tid = 0;
+      temp->tid = -1;
       temp->index = 0;
       temp = temp + 1;
     }
@@ -497,22 +515,22 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
   PTEntry * firstEmptyPageInMemory = NULL;
 
   PTEntry * temp = MemoryPageTableFront;
-  i = 0;
-  for(i = 0; i < THREAD_PAGES; i++){
-    if(temp->tid == tid) {
-      threadPagesInMemory += 1;
-    }
+  // i = 0;
+  // for(i = 0; i < THREAD_PAGES; i++){
+  //   if(temp->tid == tid) {
+  //     threadPagesInMemory += 1;
+  //   }
 
-    if(temp->tid == 0){
-      if(firstEmptyPageInMemory == NULL)
-        firstEmptyPageInMemory = temp;
-      freePagesInMemory += 1;
-    }
-    temp = temp + 1;
-  }
+  //   if(temp->tid == -1){
+  //     if(firstEmptyPageInMemory == NULL)
+  //       firstEmptyPageInMemory = temp;
+  //     freePagesInMemory += 1;
+  //   }
+  //   temp = temp + 1;
+  // }
 
-  printf("Thread %d has %d pages allocated\n", tid,threadPagesInMemory);
-  printf("Free pages in main memory %d\n",freePagesInMemory);
+  // printf("Thread %d has %d pages allocated\n", tid,threadPagesInMemory);
+  // printf("Free pages in main memory %d\n",freePagesInMemory);
 
   int threadPagesInSwapFile = 0; // Checking swapfile
   int freePagesInSwapFile = 0;
@@ -525,7 +543,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       threadPagesInSwapFile += 1;
     }
 
-    if(temp->tid == 0){
+    if(temp->tid == -1){
       if(firstEmptyPageInSwapFile == NULL)
         firstEmptyPageInSwapFile = temp;
       freePagesInSwapFile += 1;
@@ -571,6 +589,8 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     }
   }
 
+  printPageTable(25);
+
   // Try to malloc there
   ret = t_myallocate(size, file, line, memory, PAGE_SIZE*(threadPagesInMemory+threadPagesInSwapFile), currFront);
 
@@ -579,7 +599,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       // Look for next free page - in memory
       temp = MemoryPageTableFront;
       for(i = 0; i < THREAD_PAGES; i++){
-        if(temp->tid == 0){
+        if(temp->tid == -1){
           temp->tid = tid;
           temp->index = threadPagesInMemory + threadPagesInSwapFile;
           threadPagesInMemory += 1;
@@ -592,7 +612,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       // Look for next free page - in swapfile
       temp = SwapFilePageTableFront;
       for(i = 0; i < TOTAL_FILE_PAGES; i++){
-        if(temp->tid == 0){
+        if(temp->tid == -1){
           temp->tid = tid;
           temp->index = threadPagesInMemory + threadPagesInSwapFile;
           threadPagesInSwapFile += 1;
