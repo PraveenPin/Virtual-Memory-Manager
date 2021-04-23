@@ -22,8 +22,9 @@
 #include <ucontext.h>
 #include <sys/time.h>
 #include <time.h>
+#include "memory_manager.h"
 
-#define STACK_SIZE (2*1024)
+#define STACK_SIZE 64*1024
 #define NUMBER_OF_LEVELS 3
 #define MAX_THREADS 128
 
@@ -34,7 +35,7 @@ typedef enum{
 	FINISHED
 }my_pthread_state;
 
-typedef long int my_pthread_t;
+typedef unsigned int my_pthread_t;
 
 typedef struct threadControlBlock {
 	char my_pthread_name[31]; //name for a thread if required
@@ -43,7 +44,7 @@ typedef struct threadControlBlock {
 	my_pthread_t id; // thread id
 	my_pthread_state state; //thread state
 	void **retVal; //return value from the function
-	my_pthread_t waiting_id; //Thread id of the thread waiting on this thread
+	int waiting_id; //Thread id of the thread waiting on this thread
 
     my_pthread_t mutex_acquired_thread_id;
     int priority; // thread priority
@@ -52,12 +53,11 @@ typedef struct threadControlBlock {
 	int firstCycle;
 
 	int hasMutex;
-	int mallocFrame;
-	struct pageMetaData *firstPage;
+	MDBlock *front;
 } TCB; 
 
 struct ListNode{
-    long int tid;
+    unsigned int tid;
     struct ListNode *next;
 };
 
@@ -92,9 +92,9 @@ void stateOfQueue(Queue *queue);
 void deleteAParticularNodeFromQueue(my_pthread_t tid, Queue *queue, TCB **thread);
 
 
-int addToTidQueue(long int tid, TidQueue *waitingThreads);
+int addToTidQueue(unsigned int tid, TidQueue *waitingThreads);
 
-int isThisThreadWaitingForMutex(long int tid, TidQueue *waitingThreads);
+int isThisThreadWaitingForMutex(unsigned int tid, TidQueue *waitingThreads);
 
 void emptyTidQueue(TidQueue *waitingThreads);
 

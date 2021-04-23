@@ -4,8 +4,14 @@
 #include <sys/time.h>
 #include <signal.h>
 
+#define SIZE 10
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
+typedef struct dummyStruct {
+	int i;
+	char c;
+} dummy;
+
 /***
  * busyWait - Function to mimic sleep() as sleep() wakes on alarm
  * @param 	i 	int 	Approx. duration of wait
@@ -23,48 +29,77 @@ void busyWait(int i) {
 
 int threadFunc1(void*g) {
     printf("Thread 1 is trying to lock the mutex\n");
-    //my_pthread_mutex_lock(&mutex);
-    //my_pthread_mutex_lock(&mutex2);
 	int i;
     for(i = 0; i < 2; i++){
-        //my_pthread_mutex_lock(&mutex);
         global_var1++;
         busyWait(1);
-        //my_pthread_mutex_unlock(&mutex);
-        //printf("This is the first Thread 1\n");
     }
+
+	long long int * ptrs[SIZE];
+    for(i = 0; i < SIZE; i++){
+		ptrs[i] = malloc(sizeof(long long int));
+        printf("New malloc pointer fot thread 1 %p\n",ptrs[i]);
+		if(ptrs[i] != NULL){
+		    *ptrs[i] = i;
+        }
+		else{
+            printf("Malloc operation failed in thread function 1\n");
+        }
+		my_pthread_yield();
+	}
+
+	for(i = 0; i < SIZE; i++){
+        printf("Freeing malloc pointer fot thread 1 %p\n",ptrs[i]);
+		free(ptrs[i]);
+
+		my_pthread_yield();
+	}
     global_var2++;
-    //my_pthread_mutex_unlock(&mutex2);
     return 11;
 }
 
 void threadFunc2() {
     int i;
-    printf("Thread 2 is trying to lock the mutex \n");
-    //my_pthread_mutex_lock(&mutex);
-    printf("Thread 2 has successfully acquired the lock\n");
     for(i = 0; i < 2 ; i++) {
         busyWait(2);
-        //printf("This is the second Thread 2\n");
     }
     global_var1++;
-    printf("Thread 2 is trying to unlock the mutex\n");
-    //my_pthread_mutex_unlock(&mutex);
+
+    dummy * ptrs[SIZE];
+	for(i = 0; i < SIZE; i++){
+		ptrs[i] = malloc(sizeof(dummy));
+        printf("New malloc pointer fot thread 2 %p\n",ptrs[i]);
+		(*ptrs[i]).i = i;
+		(*ptrs[i]).c = 'a';
+	}
+
+	my_pthread_yield();
+
+	for(i = 0; i < SIZE; i++){	
+        printf("Freeing malloc pointer fot thread 2 %p\n",ptrs[i]);	
+		free(ptrs[i]);
+	}
     printf("Thread  2 EXITING!!!!!!!!\n");
 }
 
 int threadFunc3() {
     int i;
-    //my_pthread_mutex_lock(&mutex);
-    //my_pthread_mutex_lock(&mutex2);
     for(i = 0; i < 3 ; i++) {
         busyWait(3);
-        //printf("This is the third Thread 3\n");
         global_var2++;
-        //my_pthread_mutex_unlock(&mutex2);
     }
     global_var1++;
-    //my_pthread_mutex_unlock(&mutex);
+    
+    int *ptrs[SIZE];
+	for(i = 0; i < SIZE; i++){
+		ptrs[i] = malloc(sizeof(int)*20);
+		*ptrs[i] = i;
+	}
+
+	for(i = 0; i < SIZE; i++){
+		free(ptrs[i]);
+	}
+
     printf("Thread  3 is done!\n");
     return 777;
 
@@ -93,28 +128,24 @@ int main(int argc, const char * argv[]) {
 	struct timeval start, end;
 	float delta;
 	gettimeofday(&start, NULL);
-	my_pthread_t t1,t2,t3,t4,t5,t6,t7,t8;
+	my_pthread_t *t1 = malloc(sizeof(my_pthread_t));
+	my_pthread_t *t2 = malloc(sizeof(my_pthread_t));
+    my_pthread_t t3,t4;
     // my_pthread_mutex_init(&mutex, NULL);
     // my_pthread_mutex_init(&mutex2, NULL);
     int *retVal1, *retVal2, *retVal3, *retVal4;
     //Create threads
-    my_pthread_create(&t1, NULL, &threadFunc1,NULL);
-    my_pthread_create(&t2, NULL, &threadFunc2,NULL);
+    my_pthread_create(t1, NULL, &threadFunc1,NULL);
+    my_pthread_create(t2, NULL, &threadFunc2,NULL);
     my_pthread_create(&t3, NULL, &threadFunc3,NULL);
     my_pthread_create(&t4, NULL, &threadFunc4,NULL);
-    // my_pthread_create(&t5, NULL, &threadFunc,NULL);
-    // my_pthread_create(&t6, NULL, &threadFunc,NULL);
-    // my_pthread_create(&t7, NULL, &threadFunc,NULL);
-    // my_pthread_create(&t8, NULL, &threadFunc,NULL);
 
-    my_pthread_join(t1, &retVal1);
-    my_pthread_join(t2, &retVal2);
-    // my_pthread_join(t3, &retVal3);
-    // my_pthread_join(t4, &retVal4);
-    // my_pthread_join(t5,NULL);
-    // my_pthread_join(t6,NULL);
-    // my_pthread_join(t7,NULL);
-    // my_pthread_join(t8,NULL);
+    printf("Thread id -> %d %d %d %d\n",*t1,*t2,t3,t4);
+
+    my_pthread_join(*t1, &retVal1);
+    my_pthread_join(*t2, &retVal2);
+    my_pthread_join(t3, &retVal3);
+    my_pthread_join(t4, &retVal4);
     printf("Retvals - %d %d %d %d\n",retVal1,retVal2,retVal3, retVal4);
     printf("Global variables - %d %d\n",global_var1,global_var2);
     
