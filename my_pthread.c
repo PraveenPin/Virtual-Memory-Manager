@@ -655,7 +655,7 @@ int my_pthread_join(my_pthread_t tid, void **value_ptr) {
 			}
 			else{
 				printf("Found Thread %d in finished queue\n",tid);
-				if(threadToWaitOn->retVal != NULL){
+				if(threadToWaitOn->retVal != NULL && value_ptr != NULL){
 					*value_ptr = *threadToWaitOn->retVal;
 					freeThread(threadToWaitOn);
 				}

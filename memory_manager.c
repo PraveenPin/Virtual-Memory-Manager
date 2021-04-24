@@ -20,6 +20,7 @@ MDBlock * libFront = NULL;
 int swapfd;
 extern TCB *running;
 extern unsigned int threadCount;
+unsigned int victimThreshold = 2;
 
 
 /* TESTING-ONLY FUNCTIONS*/
@@ -37,8 +38,8 @@ void printPageTable(int howMany){
   PTEntry *ptr = MemoryPageTableFront;
   int i = 0;
   printf("   Memory Page Table    \n");
-  for(i = 0; i < 15; i++){
-    printf("i: %d - tid: %d, index - %d\n", i, (*ptr).tid, (*ptr).index);
+  for(i = 0; i < howMany; i++){
+    printf("i: %d - tid: %d, index - %d, useBit - %d\n", i, (*ptr).tid, (*ptr).index, ptr->useBit);
     ptr += 1;
   }
   printf("\n");
@@ -53,6 +54,38 @@ void printPageTable(int howMany){
   printf("\n");
 }
 
+void printMemory(){
+  MDBlock *start = memory;
+  printf("Blocks Start -\t");
+  while(start != NULL){
+    printf("%d\t",start->size);
+    start = start->next;
+  }
+  printf("- Blocks End\n");
+}
+
+
+int getLRUFrameFromMemoryPageTable(){
+  int frame = 0, tempIndex = 0;
+  while(1){
+
+    if(MemoryPageTableFront[tempIndex].useBit == FALSE){
+      frame = tempIndex;
+      return frame;
+      // break;
+    }
+    else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
+      MemoryPageTableFront[tempIndex].useBit = FALSE;
+    }
+
+    if(tempIndex >= THREAD_PAGES-1){
+        tempIndex = 0;
+    }
+    else{
+      tempIndex++;
+    }
+  }    
+}
 
 /* HELPER METHODS */
 
@@ -73,6 +106,7 @@ void removePages(unsigned int tid){
     if((*ptr).tid == tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
+      ptr->useBit = FALSE;      
     }
     ptr += 1;
   }
@@ -82,6 +116,7 @@ void removePages(unsigned int tid){
     if((*ptr).tid == tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
+      ptr->useBit = FALSE;
     }
     ptr += 1;
   }
@@ -137,6 +172,10 @@ void internalSwapper(unsigned int in, unsigned int out){
   // Protect what was swapped out
   if(out != in)
     mprotect(inPtr, PAGE_SIZE, PROT_NONE);  //disallow all accesses of address buffer over length pagesize
+
+  //mark the use bit
+  MemoryPageTableFront[out].useBit = TRUE;
+  MemoryPageTableFront[in].useBit = TRUE;
 
   // Change Page Table
   tempPI = MemoryPageTableFront[out];
@@ -194,6 +233,10 @@ void memoryToSwapFileSwapper(unsigned int in, unsigned int out){
   tempPI = SwapFilePageTableFront[out];
   SwapFilePageTableFront[out] = MemoryPageTableFront[in];
   MemoryPageTableFront[in] = tempPI;
+
+  //mark the swapped in page
+  MemoryPageTableFront[in].useBit = TRUE;
+  SwapFilePageTableFront[out].useBit = FALSE;
 }
 
 /* __createMeta()__
@@ -249,12 +292,14 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   }
 
   // Check if we need a swap
-  if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ //if correct memory location is being accesed
+  if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ 
+    printf("Accessing its own page => granting access\n");
     mprotect(memory + index*PAGE_SIZE, PAGE_SIZE, PROT_READ | PROT_WRITE); // Un-mempotect and go
     enableInterrupts();
     return;
 
-  } else { // Find the right page and swap it in
+  }
+  else { // Find the right page and swap it in
     // In memory
     printf("Trying in-memory swapping for page number %d\n",index);
     int swapIndex = 0;
@@ -267,14 +312,43 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
       }
     }
 
+    printf("Starting 2-nd chance PRA\n");
+
+    //2nd chance circular clock
+    //find victim which is not used recently
+    //change the index 
+    int frame = 0,tempIndex = 0;
+    int oldCounter = 0;
+    while(1){
+      if(MemoryPageTableFront[tempIndex].tid == -1){
+        frame = tempIndex;
+        break;
+      }
+      else{
+        if(MemoryPageTableFront[tempIndex].useBit == FALSE){
+          frame = tempIndex;
+          break;
+        }
+        else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
+          MemoryPageTableFront[tempIndex].useBit = FALSE;
+        }
+      }
+        if(tempIndex>=THREAD_PAGES-1){
+          tempIndex=0;
+        }
+        tempIndex++;
+    }
+
+    printf("Found LRU page in frame %d\n",frame);
+
 
     printf("Checking in swap file for swapping for page number %d\n",index);
     // In swapfile
     swapIndex = 0;
     for(swapIndex = 0; swapIndex < TOTAL_FILE_PAGES; swapIndex++){
       if(SwapFilePageTableFront[swapIndex].tid == tid && SwapFilePageTableFront[swapIndex].index == index){
-        printf("Swapping in page number %d from swap file into frame number %d\n",swapIndex,index);
-        memoryToSwapFileSwapper(index, swapIndex);
+        printf("Swapping in page number %d from swap file into frame number %d\n",SwapFilePageTableFront[swapIndex].index,frame);
+        memoryToSwapFileSwapper(frame, swapIndex);
         enableInterrupts();
         return;
       }
@@ -302,7 +376,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
   // Place as new front
 	if((*frontPtr) == NULL) {
     (*frontPtr) = (MDBlock *) memStart;
-      printf("Placing at the front initially for size %zu\n",size);
+      printf("Placing at the front\n");
     return createMeta((void *) memStart, size, NULL);
   }
 
@@ -310,7 +384,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
   if( ((char *) (*frontPtr)) - memStart >= size + (sizeof(MDBlock))){
     MDBlock * temp = (*frontPtr);
     (*frontPtr) = (MDBlock *) memStart;
-      printf("Placing at the front for size %zu\n",size);
+      printf("Placing at the front\n");
     return createMeta((void *) memStart, size, temp);
   }
 
@@ -322,7 +396,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
     if ( ((char *) (*ptr).next) - ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size) >= size + (sizeof(MDBlock))) {
       MDBlock * temp = (*ptr).next;
       (*ptr).next = (MDBlock *) ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size);
-      printf("Placing in the middle for size %zu\n",size);
+      printf("Placing in the middle\n");
       return createMeta((void *) (*ptr).next, size, temp);
     }
 
@@ -332,7 +406,7 @@ void * t_myallocate(size_t size, char *  file, int line, char * memStart, size_t
   // Place at the end
   if ( (memStart + memSize) - ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size) >= size + (sizeof(MDBlock))) {
     (*ptr).next = (MDBlock *) ( ((char *) ptr) + (sizeof(MDBlock)) + (*ptr).size);
-    printf("Placing at the end for size %zu\n",size);
+    printf("Placing at the end\n");
     return createMeta((void *) (*ptr).next, size, NULL);
   }
 
@@ -357,6 +431,8 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
   MDBlock ** currFront;
   int i;
   void * ret;
+
+  printf("Request size ----------------------------> %d\n",size);
 
   // Has memory been created yet?
   if(memory == NULL){
@@ -411,6 +487,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     for(i = 0; i < THREAD_PAGES; i++){
       temp->tid = -1;
       temp->index = 0;
+      temp->useBit = FALSE;
       temp = temp + 1;
     }
 
@@ -422,6 +499,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     for(i = 0; i < TOTAL_FILE_PAGES; i++){
       temp->tid = -1;
       temp->index = 0;
+      temp->useBit = FALSE;
       temp = temp + 1;
     }
 
@@ -526,6 +604,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
 
   int threadPagesInSwapFile = 0; // Checking swapfile
   int freePagesInSwapFile = 0;
+  int firstEmptyPageIndexInSwapFile = 0;
   PTEntry * firstEmptyPageInSwapFile = NULL;
 
   temp = SwapFilePageTableFront;
@@ -536,21 +615,26 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     }
 
     if(temp->tid == -1){
-      if(firstEmptyPageInSwapFile == NULL)
+      if(firstEmptyPageInSwapFile == NULL){
         firstEmptyPageInSwapFile = temp;
+        firstEmptyPageIndexInSwapFile = i;
+      }
       freePagesInSwapFile += 1;
     }
     temp = temp + 1;
   }
 
   printf("Thread %d has %d swap pages allocated\n", tid,threadPagesInSwapFile);
-  printf("Free pages in swap file %d\n",freePagesInSwapFile);
+  printf("Free pages in swap file %d with first empty page index %d\n",freePagesInSwapFile,firstEmptyPageIndexInSwapFile);
 
   // Make sure enough space exists for it
   char allow = 'y';
-  if(PAGE_SIZE*(THREAD_PAGES-threadPagesInSwapFile-threadPagesInMemory) < size + (sizeof(MDBlock)) ||
-      PAGE_SIZE*(freePagesInSwapFile+freePagesInMemory) < size + (sizeof(MDBlock)))
-    allow = 'n'; // TRY BUT DON'T ALLOW NEW PAGE ALLOCATION
+  unsigned int allocationSize = size + (sizeof(MDBlock));
+  if((PAGE_SIZE*(THREAD_PAGES-threadPagesInSwapFile-threadPagesInMemory) < allocationSize) &&
+      ((PAGE_SIZE*(freePagesInSwapFile+freePagesInMemory)) < allocationSize)){
+        printf("Reuested size %d but space left %d\n",allocationSize,(PAGE_SIZE*(freePagesInSwapFile+freePagesInMemory)));
+      allow = 'n';
+  } // TRY BUT DON'T ALLOW NEW PAGE ALLOCATION
 
   // If it had no Pages
   if(threadPagesInMemory + threadPagesInSwapFile == 0){
@@ -560,6 +644,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
 
       firstEmptyPageInMemory->tid = tid;
       firstEmptyPageInMemory->index = 0;
+      firstEmptyPageInMemory->useBit = TRUE;
 
       threadPagesInMemory = 1;
       freePagesInMemory -= 1;
@@ -581,10 +666,11 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     }
   }
 
-  printPageTable(25);
-
   // Try to malloc there
   ret = t_myallocate(size, file, line, memory, PAGE_SIZE*(threadPagesInMemory+threadPagesInSwapFile), currFront);
+
+  printPageTable(5);
+  printMemory();
 
   while(ret == NULL && allow == 'y'){
     if(freePagesInMemory > 0){
@@ -594,27 +680,55 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
         if(temp->tid == -1){
           temp->tid = tid;
           temp->index = threadPagesInMemory + threadPagesInSwapFile;
+          temp->useBit = TRUE;
+
           threadPagesInMemory += 1;
           freePagesInMemory -= 1;
           break;
         }
         temp = temp + 1;
       }
-    } else if(freePagesInSwapFile > 0) {
-      // Look for next free page - in swapfile
-      temp = SwapFilePageTableFront;
-      for(i = 0; i < TOTAL_FILE_PAGES; i++){
+    }
+    else if(freePagesInSwapFile > 0) {
+      //Look for LRU page in memory and swap it with first free page in swapfile 
+      //use this 
+      int frame = getLRUFrameFromMemoryPageTable();
+
+      printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame);
+
+      memoryToSwapFileSwapper(frame, firstEmptyPageIndexInSwapFile);
+
+       // Look for next free page - in memory
+      temp = MemoryPageTableFront;
+      for(i = 0; i < THREAD_PAGES; i++){
         if(temp->tid == -1){
           temp->tid = tid;
           temp->index = threadPagesInMemory + threadPagesInSwapFile;
-          threadPagesInSwapFile += 1;
-          freePagesInSwapFile -= 1;
+          temp->useBit = TRUE;
+
+          threadPagesInMemory += 1;
+          freePagesInMemory -= 1;
           break;
         }
         temp = temp + 1;
       }
+
+
+      // Look for next free page - in swapfile
+      // temp = SwapFilePageTableFront;
+      // for(i = 0; i < TOTAL_FILE_PAGES; i++){
+      //   if(temp->tid == -1){
+      //     temp->tid = tid;
+      //     temp->index = threadPagesInMemory + threadPagesInSwapFile;
+      //     threadPagesInSwapFile += 1;
+      //     freePagesInSwapFile -= 1;
+      //     break;
+      //   }
+      //   temp = temp + 1;
+      // }
     } else {
       // ERROR
+      printf("Last Resort");
       enableInterrupts();
       return NULL;
     }
@@ -706,15 +820,9 @@ void mydeallocate(void * freeThis, char * file, int line, requestType reqType){
     return;
   }
 
-  // Check if it was shalloced
-//   if(t_mydeallocate(freeThis, file, line, &sharedFront, 's') == 0){
-//     enableInterrupts();
-//     return;
-//   }
-
   // Who called mydeallocate()?
   if(reqType == LIBRARYREQ){ // Request from the scheduler
-    t_mydeallocate(freeThis, file, line, &libFront, 'r');
+    t_mydeallocate(freeThis, file, line, &libFront, 'l');
     enableInterrupts();
     return;
 
@@ -728,10 +836,9 @@ void mydeallocate(void * freeThis, char * file, int line, requestType reqType){
     tid = running->id;
     currFront = &((running->front));
   }
-  // printf("Trying to free the pointer request from File: %s, Line: %d\n", file, line);
 
   // Deallocate the given pointer if possible
-  t_mydeallocate(freeThis, file, line, currFront, 'r');
+  t_mydeallocate(freeThis, file, line, currFront, 'l');
 
   enableInterrupts();
 }
