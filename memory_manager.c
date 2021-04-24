@@ -21,6 +21,7 @@ int swapfd;
 extern TCB *running;
 extern unsigned int threadCount;
 unsigned int victimThreshold = 2;
+int frequencyTrackerForThreadPage[THREAD_PAGES] = {0};
 
 
 /* TESTING-ONLY FUNCTIONS*/
@@ -87,6 +88,22 @@ int getLRUFrameFromMemoryPageTable(){
   }    
 }
 
+//Least recently used algorithm 
+int fetchLRUFrameFromMemoryPageTable(){
+  int min=frequencyTrackerForThreadPage[0];
+        for(int i=0; i<THREAD_PAGES-1;i++)
+        {
+            if(min>=frequencyTrackerForThreadPage[i])
+            {
+                min=frequencyTrackerForThreadPage[i];
+                index=i;
+            }
+        }
+        frequencyTrackerForThreadPage[threadCount] = {0};
+        return index;
+}
+
+
 /* HELPER METHODS */
 
 /* __removePages()__
@@ -106,7 +123,9 @@ void removePages(unsigned int tid){
     if((*ptr).tid == tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
-      ptr->useBit = FALSE;      
+      ptr->useBit = FALSE; 
+      //Least recently used algorithm 
+      frequencyTrackerForThreadPage[(*ptr).index] = 0;   
     }
     ptr += 1;
   }
@@ -117,6 +136,7 @@ void removePages(unsigned int tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
       ptr->useBit = FALSE;
+      frequencyTrackerForThreadPage[(*ptr).index] = 0;   
     }
     ptr += 1;
   }
@@ -181,6 +201,7 @@ void internalSwapper(unsigned int in, unsigned int out){
   tempPI = MemoryPageTableFront[out];
   MemoryPageTableFront[out] = MemoryPageTableFront[in];
   MemoryPageTableFront[in] = tempPI;
+  frequencyTrackerForThreadPage[in] +=1;
 }
 
 void memoryToSwapFileSwapper(unsigned int in, unsigned int out){
@@ -294,6 +315,7 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   // Check if we need a swap
   if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ 
     printf("Accessing its own page => granting access\n");
+    frequencyTrackerForThreadPage[index] += 1;
     mprotect(memory + index*PAGE_SIZE, PAGE_SIZE, PROT_READ | PROT_WRITE); // Un-mempotect and go
     enableInterrupts();
     return;
@@ -319,26 +341,26 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     //change the index 
     int frame = 0,tempIndex = 0;
     int oldCounter = 0;
-    while(1){
-      if(MemoryPageTableFront[tempIndex].tid == -1){
-        frame = tempIndex;
-        break;
-      }
-      else{
-        if(MemoryPageTableFront[tempIndex].useBit == FALSE){
-          frame = tempIndex;
-          break;
-        }
-        else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
-          MemoryPageTableFront[tempIndex].useBit = FALSE;
-        }
-      }
-        if(tempIndex>=THREAD_PAGES-1){
-          tempIndex=0;
-        }
-        tempIndex++;
-    }
-
+    // while(1){
+    //   if(MemoryPageTableFront[tempIndex].tid == -1){
+    //     frame = tempIndex;
+    //     break;
+    //   }
+    //   else{
+    //     if(MemoryPageTableFront[tempIndex].useBit == FALSE){
+    //       frame = tempIndex;
+    //       break;
+    //     }
+    //     else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
+    //       MemoryPageTableFront[tempIndex].useBit = FALSE;
+    //     }
+    //   }
+    //     if(tempIndex>=THREAD_PAGES-1){
+    //       tempIndex=0;
+    //     }
+    //     tempIndex++;
+    // }
+    fetchLRUFrameFromMemoryPageTable();
     printf("Found LRU page in frame %d\n",frame);
 
 
@@ -489,6 +511,8 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       temp->index = 0;
       temp->useBit = FALSE;
       temp = temp + 1;
+      //Least recently used algorithm
+      frequencyTrackerForThreadPage[i] = 0;
     }
 
     // Clear File Page table space + set table front
@@ -692,8 +716,8 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     else if(freePagesInSwapFile > 0) {
       //Look for LRU page in memory and swap it with first free page in swapfile 
       //use this 
-      int frame = getLRUFrameFromMemoryPageTable();
-
+      //int frame = getLRUFrameFromMemoryPageTable();
+      int frame = fetchLRUFrameFromMemoryPageTable();
       printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame);
 
       memoryToSwapFileSwapper(frame, firstEmptyPageIndexInSwapFile);
