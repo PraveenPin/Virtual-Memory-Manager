@@ -21,6 +21,7 @@ int swapfd;
 extern TCB *running;
 extern unsigned int threadCount;
 unsigned int victimThreshold = 2;
+//Least recently used algorithm 
 int frequencyTrackerForThreadPage[THREAD_PAGES] = {0};
 
 
@@ -136,6 +137,7 @@ void removePages(unsigned int tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
       ptr->useBit = FALSE;
+      //Least recently used algorithm 
       frequencyTrackerForThreadPage[(*ptr).index] = 0;   
     }
     ptr += 1;
@@ -201,6 +203,7 @@ void internalSwapper(unsigned int in, unsigned int out){
   tempPI = MemoryPageTableFront[out];
   MemoryPageTableFront[out] = MemoryPageTableFront[in];
   MemoryPageTableFront[in] = tempPI;
+  //Least recently used algorithm 
   frequencyTrackerForThreadPage[in] +=1;
 }
 
@@ -315,6 +318,7 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   // Check if we need a swap
   if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ 
     printf("Accessing its own page => granting access\n");
+    //Least recently used algorithm 
     frequencyTrackerForThreadPage[index] += 1;
     mprotect(memory + index*PAGE_SIZE, PAGE_SIZE, PROT_READ | PROT_WRITE); // Un-mempotect and go
     enableInterrupts();
