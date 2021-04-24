@@ -91,16 +91,23 @@ int getLRUFrameFromMemoryPageTable(){
 //Least recently used algorithm 
 int fetchLRUFrameFromMemoryPageTable(){
   int min=frequencyTrackerForThreadPage[0];
-        for(int i=0; i<THREAD_PAGES-1;i++)
+  int index = -1;
+  for(int i=0; i<THREAD_PAGES;i++)
+  {
+     if(min>=frequencyTrackerForThreadPage[i])
+     {
+        min=frequencyTrackerForThreadPage[i];
+        index=i;
+     }
+   }
+    for(int i=0; i< THREAD_PAGES; i++)
+    {
+        if(frequencyTrackerForThreadPage[i] > 0)
         {
-            if(min>=frequencyTrackerForThreadPage[i])
-            {
-                min=frequencyTrackerForThreadPage[i];
-                index=i;
-            }
+            frequencyTrackerForThreadPage[i] = frequencyTrackerForThreadPage[i] -1 ;
         }
-        frequencyTrackerForThreadPage[threadCount] = {0};
-        return index;
+    }
+   return index;
 }
 
 
