@@ -4,8 +4,7 @@
 #include <sys/time.h>
 #include <signal.h>
 
-#define SIZE 10
-#define S 5
+#define SIZE 20
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
 typedef struct dummyStruct {
@@ -70,7 +69,7 @@ void threadFunc2() {
 
     dummy * ptrs[SIZE];
 	for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(dummy));
+		ptrs[i] = malloc(sizeof(dummy)*50);
         printf("New malloc pointer fot thread 2 %p of size %zd\n",ptrs[i],sizeof(dummy));
         ptrs[i]->i = 11;
         ptrs[i]->j = 11;
@@ -98,7 +97,7 @@ int threadFunc3() {
     
     int *ptrs[SIZE];
 	for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(int)*20);
+		ptrs[i] = malloc(sizeof(int)*400);
 		*ptrs[i] = i;
 	}
 

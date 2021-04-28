@@ -20,8 +20,183 @@ MDBlock * libFront = NULL;
 int swapfd;
 extern TCB *running;
 extern unsigned int threadCount;
-unsigned int victimThreshold = 2;
+static FreeVictimList freeList;
+int freeListLength = 0, N = 3;
+/*Free victim list implementation*/
+int addToFreeList(int frame, FreeVictimList *freeList){
+  printf("****************Adding at the back of the queue %d\n",frame);
+    if(freeList->front == 0){
+        freeList->front = myallocate((sizeof(struct freeNode)), __FILE__,__LINE__, LIBRARYREQ);
+        freeList->front->frame = frame;
+        freeList->back = freeList->front;
+        freeList->front->next = 0;
+        freeList->back->next = 0;
+        freeListLength++; 
+    }
+    else{
+        //check that existing frame is already there
+        struct freeNode *temp = freeList->front;
+        while(temp != NULL && temp->frame != frame){
+          temp = temp->next;
+        }
+        if(temp != NULL){
+          //found the same frame
+          return 0;
+        }
 
+        freeList->back->next = myallocate((sizeof(struct freeNode)), __FILE__,__LINE__, LIBRARYREQ);
+        freeList->back = freeList->back->next;
+        freeList->back->frame = frame;
+        freeList->back->next = 0;
+        freeListLength++;
+    }
+
+    stateOfFreeList(freeList);
+    
+    return 1;
+}
+
+int removeFromFreeList(FreeVictimList *freeList, int *frame){
+    if(freeList->front == 0){
+        return 0;
+    }
+    if(freeList->front != freeList->back){
+        *frame = freeList->front->frame;
+        struct freeNode *tempNode = freeList->front;
+        freeList->front = freeList->front->next;
+        freeListLength--;
+		    mydeallocate(tempNode, __FILE__, __LINE__, LIBRARYREQ);
+    }
+    else{
+        *frame = freeList->front->frame;
+        freeListLength--;
+		    mydeallocate(freeList->front, __FILE__, __LINE__, LIBRARYREQ);
+        freeList->front = 0;
+        freeList->back = 0;
+    }
+    return 1;
+}
+
+int isFreeListEmpty(FreeVictimList *freeList){
+    if(freeList->front == 0){
+        return 1;
+    }
+    return 0;
+}
+
+void stateOfFreeList(FreeVictimList *freeList){
+    struct freeNode *tempNode = freeList->front;
+    if(tempNode != NULL){
+        printf("******************FreeVictimList of length %d with elems->\t",freeListLength);
+    }
+    while(tempNode != NULL){
+        printf("%d\t",tempNode->frame);
+        tempNode = tempNode->next;
+    }
+    printf("\n");
+}
+
+
+void deleteAParticularNodeFromFreeList(int frame, FreeVictimList *freeList){
+    struct freeNode *tempNode = freeList->front;
+    struct freeNode *prevNode = NULL;
+    while(tempNode != NULL && tempNode->frame != frame){
+        prevNode = tempNode;
+        tempNode = tempNode->next;
+    }
+    //printf("freeList->front:%d freeList->back:%d tempNode:%d prevNode: %d",freeList->front, freeList->back, tempNode, prevNode);
+    if(tempNode != NULL && tempNode->frame == frame){                       
+        if(freeList->front == freeList->back){
+            freeList->front = 0;
+            freeList->back = 0;
+        }
+        else{
+            if(tempNode == freeList->front){
+                freeList->front = tempNode->next;
+            }
+            else if(tempNode == freeList->back){
+                freeList->back = prevNode;
+                freeList->back->next = NULL;
+            }
+            else{             
+                prevNode->next = tempNode->next;
+            }
+        }
+    }
+}
+
+void updateFreeListForSwapOut(int oldTid){
+  int i=0;
+  for(i = 0;i<THREAD_PAGES;i++){
+    if(MemoryPageTableFront[i].tid == oldTid){
+      addToFreeList(i,&freeList);
+    }
+  }
+}
+
+void updateFreeList(int currentTid){
+  int i=0;
+  for(i = 0;i<THREAD_PAGES;i++){
+    if(MemoryPageTableFront[i].tid != currentTid && MemoryPageTableFront[i].useBit == FALSE){
+      addToFreeList(i,&freeList);
+    }
+  }
+
+  if(freeListLength < N){
+    for(i = 0;i<THREAD_PAGES;i++){
+      if(MemoryPageTableFront[i].tid != currentTid && MemoryPageTableFront[i].useBit == TRUE){
+        addToFreeList(i,&freeList);
+      }
+      if(freeListLength >= N){
+        return;
+      }
+    }
+  }
+}
+
+int getVictimFrame(int currentTid){
+  if(freeList.front != NULL){
+    int victimFrame = freeList.front->frame;
+
+    if(MemoryPageTableFront[victimFrame].tid != currentTid && MemoryPageTableFront[victimFrame].useBit == FALSE){
+      int *frameNumber;
+      removeFromFreeList(&freeList,&frameNumber);
+      return *frameNumber;
+    }
+
+    printf("Insiide gte victim frame ->\t");
+    stateOfFreeList(&freeList);
+
+    struct freeNode *temp = (&(freeList))->front;
+    while(temp != NULL){
+      if(MemoryPageTableFront[temp->frame].tid != currentTid){
+        if(MemoryPageTableFront[temp->frame].useBit == FALSE){
+          int frameToRemove = temp->frame;
+          deleteAParticularNodeFromFreeList(temp->frame,&freeList);
+          return frameToRemove;
+        }
+        else{
+          MemoryPageTableFront[temp->frame].useBit = FALSE; 
+        }
+      }
+
+      temp = temp->next;
+    }
+    if(temp == NULL && freeList.front != NULL){
+      return freeList.front->frame;
+    }
+    else if(freeList.front == NULL){
+      printf("Searched the whole free queue none left\n");
+      return 0;
+    }
+    
+  }
+  else{
+    printf("No entry in free Queue \n");
+  }
+
+  return 0;
+}
 
 /* TESTING-ONLY FUNCTIONS*/
 
@@ -317,27 +492,31 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     //2nd chance circular clock
     //find victim which is not used recently
     //change the index 
-    int frame = 0,tempIndex = 0;
-    int oldCounter = 0;
-    while(1){
-      if(MemoryPageTableFront[tempIndex].tid == -1){
-        frame = tempIndex;
-        break;
-      }
-      else{
-        if(MemoryPageTableFront[tempIndex].useBit == FALSE){
-          frame = tempIndex;
-          break;
-        }
-        else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
-          MemoryPageTableFront[tempIndex].useBit = FALSE;
-        }
-      }
-        if(tempIndex>=THREAD_PAGES-1){
-          tempIndex=0;
-        }
-        tempIndex++;
-    }
+    // int frame = 0,tempIndex = 0;
+    // int oldCounter = 0;
+    // while(1){
+    //   if(MemoryPageTableFront[tempIndex].tid == -1){
+    //     frame = tempIndex;
+    //     break;
+    //   }
+    //   else{
+    //     if(MemoryPageTableFront[tempIndex].useBit == FALSE){
+    //       frame = tempIndex;
+    //       break;
+    //     }
+    //     else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
+    //       MemoryPageTableFront[tempIndex].useBit = FALSE;
+    //     }
+    //   }
+    //     if(tempIndex>=THREAD_PAGES-1){
+    //       tempIndex=0;
+    //     }
+    //     tempIndex++;
+    // }
+
+    int frame = getVictimFrame(tid);  
+
+    // int frame = getLRUFrameFromMemoryPageTable();
 
     printf("Found LRU page in frame %d\n",frame);
 
@@ -349,6 +528,11 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
       if(SwapFilePageTableFront[swapIndex].tid == tid && SwapFilePageTableFront[swapIndex].index == index){
         printf("Swapping in page number %d from swap file into frame number %d\n",SwapFilePageTableFront[swapIndex].index,frame);
         memoryToSwapFileSwapper(frame, swapIndex);
+
+        if(freeListLength < N){
+          updateFreeList(&freeList);
+        }
+
         enableInterrupts();
         return;
       }
@@ -582,6 +766,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
   // Find thread's total space + Find 1st free page + Find num of free pages
   int threadPagesInMemory = 0; // Checking memory
   int freePagesInMemory = 0;
+  int firstEmptyFrameInMemory = -1;
   PTEntry * firstEmptyPageInMemory = NULL;
 
   PTEntry * temp = MemoryPageTableFront;
@@ -592,8 +777,10 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     }
 
     if(temp->tid == -1){
-      if(firstEmptyPageInMemory == NULL)
+      if(firstEmptyPageInMemory == NULL){
         firstEmptyPageInMemory = temp;
+        firstEmptyFrameInMemory = i;
+      }        
       freePagesInMemory += 1;
     }
     temp = temp + 1;
@@ -649,21 +836,27 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       threadPagesInMemory = 1;
       freePagesInMemory -= 1;
 
-    } else if (firstEmptyPageInSwapFile != NULL) { // Pages exist in swapfile
-      printf("In Swap File\n");
+      //freelistcode
+      if(freeListLength < N){
+        addToFreeList(firstEmptyFrameInMemory,&freeList);
+      }     
 
-      firstEmptyPageInSwapFile->tid = tid;
-      firstEmptyPageInSwapFile->index = 0;
+    } 
+    // else if (firstEmptyPageInSwapFile != NULL) { // Pages exist in swapfile
+    //   printf("In Swap File\n");
 
-      threadPagesInSwapFile = 1;
-      freePagesInSwapFile -= 1;
+    //   firstEmptyPageInSwapFile->tid = tid;
+    //   firstEmptyPageInSwapFile->index = 0;
 
-    } else { // If there are no free pages
-      // ERROR
-        printf(", But no free pages to allocate\n");
-      enableInterrupts();
-      return NULL;
-    }
+    //   threadPagesInSwapFile = 1;
+    //   freePagesInSwapFile -= 1;
+
+    // } else { // If there are no free pages
+    //   // ERROR
+    //     printf(", But no free pages to allocate\n");
+    //   enableInterrupts();
+    //   return NULL;
+    // }
   }
 
   // Try to malloc there
@@ -684,6 +877,11 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
 
           threadPagesInMemory += 1;
           freePagesInMemory -= 1;
+
+          //freelistcode
+          if(freeListLength < N){
+            addToFreeList(i,&freeList);
+          }
           break;
         }
         temp = temp + 1;
@@ -692,9 +890,10 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
     else if(freePagesInSwapFile > 0) {
       //Look for LRU page in memory and swap it with first free page in swapfile 
       //use this 
-      int frame = getLRUFrameFromMemoryPageTable();
+      // int frame = getLRUFrameFromMemoryPageTable();
+      int frame = getVictimFrame(tid);      
 
-      printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame);
+      printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame,firstEmptyPageIndexInSwapFile);
 
       memoryToSwapFileSwapper(frame, firstEmptyPageIndexInSwapFile);
 
@@ -711,6 +910,10 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
           break;
         }
         temp = temp + 1;
+      }
+
+      if(freeListLength < N){
+        updateFreeList(&freeList);
       }
 
 

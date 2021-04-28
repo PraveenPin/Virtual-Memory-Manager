@@ -362,6 +362,8 @@ void scheduler(int sig){
 		timeSinceLastMaintenance = 0;
 		scheduleMaintenance();
 	}
+
+	updateFreeListForSwapOut(running->id);
 	
 	if(running->state == FINISHED){
 		//we have to decide whther to free this or not
