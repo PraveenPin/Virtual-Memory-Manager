@@ -70,7 +70,7 @@ void threadFunc2() {
 
     dummy * ptrs[SIZE];
 	for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(dummy));
+		ptrs[i] = malloc(sizeof(dummy)*50);
         printf("New malloc pointer fot thread 2 %p of size %zd\n",ptrs[i],sizeof(dummy));
         ptrs[i]->i = 11;
         ptrs[i]->j = 11;

@@ -23,6 +23,7 @@ extern TCB *running;
 extern unsigned int threadCount;
 unsigned int victimThreshold = 2;
 int frequencyTrackerForThreadPage[THREAD_PAGES] = {0};
+int FIFOlist[THREAD_PAGES] = {0};
 
 
 /* TESTING-ONLY FUNCTIONS*/
@@ -85,33 +86,35 @@ int getLRUFrameFromMemoryPageTable(){
     else{
       tempIndex++;
     }
-  }    
+  }
 }
 
 int getFIFOFrameFromMemoryPageTable(){
-  // 
-  int pageFaults = 0;
-  int list = [];
-  int min=frequencyTrackerForThreadPage[0];
+  //
+    int index = 0;
 
-  for (int i = 0, n = THREAD_PAGES; i < n; ++i) {
-        if (min == frequencyTrackerForThreadPage[i]) {
-            if (min < frequencyTrackerForThreadPage[i]) {
-                // Add an element at the end
-                list.push_front(frequencyTrackerForThreadPage[i]);
-            } else {
-                // Remove oldest element
-                list.pop_back();
-                
-                // Add a new element at top
-                list.push_front(frequencyTrackerForThreadPage[i]);
-            }
-            pageFaults++;
-        }
+    if(index < THREAD_PAGES){
+      if(index < 0){
+        FIFOlist[0] = index;
+        index++;
+      } else if(index == THREAD_PAGES - 1){
+        FIFOlist[0] = index;
+        index++;
+      } else {
+        FIFOlist[index + 1] = index;
+        index++;
+      }
+    } else {
+      index = 0;
     }
 
-    return pageFaults;
+    for (size_t i = 0; i < THREAD_PAGES; i++) {
+      /* code */
+      printf("%d getFIFOFrameFromMemoryPageTable_____________________\n", FIFOlist[i], frame);
+    }
 
+
+    return index;
 }
 
 /* HELPER METHODS */
@@ -133,7 +136,8 @@ void removePages(unsigned int tid){
     if((*ptr).tid == tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
-      ptr->useBit = FALSE;      
+      ptr->useBit = FALSE;
+      FIFOlist[(*ptr).index] = 0;
     }
     ptr += 1;
   }
@@ -144,6 +148,7 @@ void removePages(unsigned int tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
       ptr->useBit = FALSE;
+      FIFOlist[(*ptr).index] = 0;
     }
     ptr += 1;
   }
@@ -208,10 +213,12 @@ void internalSwapper(unsigned int in, unsigned int out){
   tempPI = MemoryPageTableFront[out];
   MemoryPageTableFront[out] = MemoryPageTableFront[in];
   MemoryPageTableFront[in] = tempPI;
+
+  FIFOlist[in] += 1;
 }
 
 void memoryToSwapFileSwapper(unsigned int in, unsigned int out){
-  printf("*******************************************************************************************\n");
+  printf("*******************************************************************************************%d %d\n",in, out );
   if(in >= THREAD_PAGES || out >= TOTAL_FILE_PAGES){
     // ERROR
     return;
@@ -301,8 +308,8 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   }
 
   tid = running->id;
-  
-  if(accessed < memory || accessed > memory + THREAD_PAGES*PAGE_SIZE){ 
+
+  if(accessed < memory || accessed > memory + THREAD_PAGES*PAGE_SIZE){
     printf("Trying to access memory which is out of bounds (Main Memory)\n");
     // actual segfault
     enableInterrupts();
@@ -319,8 +326,9 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   }
 
   // Check if we need a swap
-  if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ 
+  if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){
     printf("Accessing its own page => granting access\n");
+    FIFOlist[index] += 1;
     mprotect(memory + index*PAGE_SIZE, PAGE_SIZE, PROT_READ | PROT_WRITE); // Un-mempotect and go
     enableInterrupts();
     return;
@@ -341,48 +349,49 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
 
     int frame = NULL;
 
-    switch(choice){
-      case 1:
-        printf("Starting 2-nd chance PRA\n");
+    // switch(choice){
+    //   case 1:
+    //     printf("Starting 2-nd chance PRA\n");
 
-        //2nd chance circular clock
-        //find victim which is not used recently
-        //change the index 
-        int tempIndex = 0;
-        int oldCounter = 0;
-        while(1){
-          if(MemoryPageTableFront[tempIndex].tid == -1){
-            frame = tempIndex;
-            break;
-          }
-          else{
-            if(MemoryPageTableFront[tempIndex].useBit == FALSE){
-              frame = tempIndex;
-              break;
-            }
-            else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
-              MemoryPageTableFront[tempIndex].useBit = FALSE;
-            }
-          }
-            if(tempIndex>=THREAD_PAGES-1){
-              tempIndex=0;
-            }
-            tempIndex++;
-        }
+    //     //2nd chance circular clock
+    //     //find victim which is not used recently
+    //     //change the index
+    //     int tempIndex = 0;
+    //     int oldCounter = 0;
+    //     while(1){
+    //       if(MemoryPageTableFront[tempIndex].tid == -1){
+    //         frame = tempIndex;
+    //         break;
+    //       }
+    //       else{
+    //         if(MemoryPageTableFront[tempIndex].useBit == FALSE){
+    //           frame = tempIndex;
+    //           break;
+    //         }
+    //         else if(MemoryPageTableFront[tempIndex].useBit == TRUE){
+    //           MemoryPageTableFront[tempIndex].useBit = FALSE;
+    //         }
+    //       }
+    //         if(tempIndex>=THREAD_PAGES-1){
+    //           tempIndex=0;
+    //         }
+    //         tempIndex++;
+    //     }
 
-        printf("Found LRU page in frame %d\n",frame);
+    //     printf("Found LRU page in frame %d\n",frame);
 
-        break;  
-      case 2:
-        getFIFOFrameFromMemoryPageTable();
-        break;
-      case 3:
-      case 4:
-      case 5:
-        exit(-1);
-        break;
-    }
-    
+    //     break;
+    //   case 2:
+    //     getFIFOFrameFromMemoryPageTable();
+    //     break;
+    //   case 3:
+    //   case 4:
+    //   case 5:
+    //     exit(-1);
+    //     break;
+    // }
+
+   frame = getFIFOFrameFromMemoryPageTable();
 
     printf("Checking in swap file for swapping for page number %d\n",index);
     // In swapfile
@@ -399,8 +408,8 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     printf("Page Number %d is out of bounds\n",index);
     if(swapIndex == THREAD_PAGES){
       // actual segfault
-      enableInterrupts(); 
-      exit(-1); 
+      enableInterrupts();
+      exit(-1);
     }
     printf("Aborted\n",index);
     exit(-1);
@@ -531,6 +540,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       temp->index = 0;
       temp->useBit = FALSE;
       temp = temp + 1;
+      FIFOlist[i] = 0;
     }
 
     // Clear File Page table space + set table front
@@ -573,13 +583,13 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
 				return -1;
 			}
 			mainThread->id = threadCount++;
-			
+
 			mainThread->context = (ucontext_t*)myallocate(sizeof(ucontext_t), __FILE__,__LINE__, LIBRARYREQ);
 			if(mainThread->context == NULL){
 				printf("Failure to allocate memory for mainThread context\n");
 				return -1;
 			}
-			
+
 
 			if(getcontext(mainThread->context) == -1){
 				printf("Failure to initialise execution context\n");
@@ -732,37 +742,36 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       }
     }
     else if(freePagesInSwapFile > 0) {
-      //Look for LRU page in memory and swap it with first free page in swapfile 
-      //use this 
-      printf("--------------------------------------------------------------------\n");
-      printf("Choose from below choice of Page Replacement Algorithms:\n");
-      printf("1. 2-nd chance PRA\n");
-      printf("2. FIFO\n");
-      printf("3. NFUR\n");
-      printf("4. List based\n");
-      printf("5. quit\n");
-      printf("--------------------------------------------------------------------\n");
+      //Look for LRU page in memory and swap it with first free page in swapfile
+      //use this
+      // printf("--------------------------------------------------------------------\n");
+      // printf("Choose from below choice of Page Replacement Algorithms:\n");
+      // printf("1. 2-nd chance PRA\n");
+      // printf("2. FIFO\n");
+      // printf("3. NFUR\n");
+      // printf("4. List based\n");
+      // printf("5. quit\n");
+      // printf("--------------------------------------------------------------------\n");
+      //
+      // scanf("Your Choice: %d", &choice);
+      // int frame = NULL;
+      //
+      // switch(choice){
+      //   case 1:
+      //     int frame = getLRUFrameFromMemoryPageTable();
+      //
+      //     printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame);
+      //     break;
+      //   case 2:
+      //     int frame = getFIFOFrameFromMemoryPageTable();
+      //     break;
+      //   case 3:
+      //   case 4:
+      //   case 5:
+      //     exit(-1);
+      // }
 
-      scanf("Your Choice: %d", &choice);
-      int frame = NULL;
-
-      switch(choice){
-        case 1:
-          int frame = getLRUFrameFromMemoryPageTable();
-
-          printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame);
-          break;
-        case 2:
-          getFIFOFrameFromMemoryPageTable();
-          break;
-        case 3:
-        case 4:
-        case 5:
-          exit(-1);
-      }
-
-      
-
+      int frame = getFIFOFrameFromMemoryPageTable();
       memoryToSwapFileSwapper(frame, firstEmptyPageIndexInSwapFile);
 
        // Look for next free page - in memory
