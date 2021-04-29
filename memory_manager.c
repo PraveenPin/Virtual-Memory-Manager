@@ -829,8 +829,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       }
       else{
           // Look for next free page - in swapfile
-          printf("Directly allocating in swap file \n");
-          exit(-1);
+        printf("Directly allocating in swap file \n");
         temp = SwapFilePageTableFront;
         for(i = 0; i < TOTAL_FILE_PAGES; i++){
           if(temp->tid == -1){
