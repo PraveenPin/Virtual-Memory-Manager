@@ -2,6 +2,7 @@
 #include <errno.h>
 #include "memory_manager.h"
 #include "my_pthread_t.h"
+//#include "main.c"
 
 extern int errno;
 /* Pointers to the start of each section of memory */
@@ -23,7 +24,7 @@ extern unsigned int threadCount;
 unsigned int victimThreshold = 2;
 //Least recently used algorithm 
 int frequencyTrackerForThreadPage[THREAD_PAGES] = {0};
-
+extern int algorithm_used = 0 ;
 
 /* TESTING-ONLY FUNCTIONS*/
 
@@ -34,6 +35,17 @@ int frequencyTrackerForThreadPage[THREAD_PAGES] = {0};
  *	Returns:
  *		- N/A
  */
+void set_algorithm_to_be_used(int algorithm){
+    algorithm_used = algorithm;
+}
+
+int getframeUsingAlgorithm(){
+    switch(algorithm_used){
+        case 1: return fetchLRUFrameFromMemoryPageTable(); break;
+        default: return getLRUFrameFromMemoryPageTable();
+    }
+    
+}
 void printPageTable(int howMany){
   if(MemoryPageTableFront == NULL)
     return;
@@ -133,7 +145,9 @@ void removePages(unsigned int tid){
       (*ptr).index = 0;
       ptr->useBit = FALSE; 
       //Least recently used algorithm 
-      frequencyTrackerForThreadPage[(*ptr).index] = 0;   
+      if(algorithm_used == 1){
+        frequencyTrackerForThreadPage[(*ptr).index] = 0; 
+      } 
     }
     ptr += 1;
   }
@@ -145,7 +159,9 @@ void removePages(unsigned int tid){
       (*ptr).index = 0;
       ptr->useBit = FALSE;
       //Least recently used algorithm 
-      frequencyTrackerForThreadPage[(*ptr).index] = 0;   
+      if(algorithm_used == 1){
+        frequencyTrackerForThreadPage[(*ptr).index] = 0; 
+      }  
     }
     ptr += 1;
   }
@@ -211,7 +227,9 @@ void internalSwapper(unsigned int in, unsigned int out){
   MemoryPageTableFront[out] = MemoryPageTableFront[in];
   MemoryPageTableFront[in] = tempPI;
   //Least recently used algorithm 
-  frequencyTrackerForThreadPage[in] +=1;
+  if(algorithm_used == 1){
+    frequencyTrackerForThreadPage[in] +=1;
+   }
 }
 
 void memoryToSwapFileSwapper(unsigned int in, unsigned int out){
@@ -326,7 +344,9 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ 
     printf("Accessing its own page => granting access\n");
     //Least recently used algorithm 
-    frequencyTrackerForThreadPage[index] += 1;
+    if(algorithm_used == 1){
+        frequencyTrackerForThreadPage[index] += 1;
+    }
     mprotect(memory + index*PAGE_SIZE, PAGE_SIZE, PROT_READ | PROT_WRITE); // Un-mempotect and go
     enableInterrupts();
     return;
@@ -371,7 +391,8 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     //     }
     //     tempIndex++;
     // }
-    fetchLRUFrameFromMemoryPageTable();
+    
+    frame = getframeUsingAlgorithm();
     printf("Found LRU page in frame %d\n",frame);
 
 
@@ -523,7 +544,9 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       temp->useBit = FALSE;
       temp = temp + 1;
       //Least recently used algorithm
-      frequencyTrackerForThreadPage[i] = 0;
+      if(algorithm_used == 1){
+        frequencyTrackerForThreadPage[i] = 0;
+       }   
     }
 
     // Clear File Page table space + set table front
@@ -549,7 +572,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
         exit(EXIT_FAILURE);
     }
   }
-
+  printf("Rectype variable %d \n" ,reqType);
   if(reqType == LIBRARYREQ){ // Request from the scheduler
     ret = t_myallocate(size, file, line, lib_memory, LIBRARY_PAGES*PAGE_SIZE, &libFront);
     enableInterrupts();
@@ -728,7 +751,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       //Look for LRU page in memory and swap it with first free page in swapfile 
       //use this 
       //int frame = getLRUFrameFromMemoryPageTable();
-      int frame = fetchLRUFrameFromMemoryPageTable();
+      int frame = getframeUsingAlgorithm();
       printf("Found LRU page frame %d to swap with first free page %d in swap file\n",frame);
 
       memoryToSwapFileSwapper(frame, firstEmptyPageIndexInSwapFile);
