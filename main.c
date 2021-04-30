@@ -3,8 +3,10 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <signal.h>
+#include "memory_manager.h"
 
 #define SIZE 50000
+
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
 typedef struct dummyStruct {
@@ -127,6 +129,7 @@ void threadFunc(){
 }
 
 int main(int argc, const char * argv[]) {
+    //set_algorithm_to_be_used(2);
 	struct timeval start, end;
 	float delta;
 	gettimeofday(&start, NULL);

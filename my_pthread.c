@@ -23,7 +23,7 @@ static Queue waitingQueue, finishedQueue;
 static int totalCyclesElapsed = 0;
 static long timeSinceLastMaintenance = 0;
 int lengthOfLeastPriorityQueue = 0;
-// extern int algo;
+extern int algorithm_used;
 
 /*List Implementation*/
 int addToTidQueue(unsigned int tid, TidQueue *tidQueue){
@@ -363,9 +363,9 @@ void scheduler(int sig){
 		scheduleMaintenance();
 	}
 
-	// if(algo == 2){
-	// 	updateFreeListForSwapOut(running->id);
-	// }
+	if(algorithm_used ==3){
+		updateFreeListForSwapOut(running->id);
+	}
 	
 	if(running->state == FINISHED){
 		//we have to decide whther to free this or not

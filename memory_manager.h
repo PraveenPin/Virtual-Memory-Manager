@@ -13,7 +13,6 @@
 
 #define malloc(x) myallocate(x, __FILE__, __LINE__, THREADREQ) 
 #define free(x) mydeallocate(x, __FILE__, __LINE__, THREADREQ) 
-// #define shalloc(x) myshalloc(x, __FILE__, __LINE__) //x is a size
 
 #define MAIN_MEMORY 8*1024*1024
 
@@ -63,6 +62,8 @@ int isFreeListEmpty(FreeVictimList *queue);
 void stateOfFreeList(FreeVictimList *queue);
 
 void deleteAParticularNodeFromFreeList(int frame, FreeVictimList *queue);
+
+void set_algorithm_to_be_used(int algorithm);
 
 void * myallocate(size_t size, char *  file, int line, requestType retType);
 
