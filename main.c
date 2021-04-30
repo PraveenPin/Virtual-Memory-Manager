@@ -68,7 +68,7 @@ void threadFunc2() {
 
     dummy * ptrs[SIZE];
 	for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(dummy)*50);
+		ptrs[i] = malloc(sizeof(dummy));
         printf("New malloc pointer fot thread 2 %p of size %zd\n",ptrs[i],sizeof(dummy));
         ptrs[i]->i = 11;
         ptrs[i]->j = 11;
@@ -129,7 +129,7 @@ void threadFunc(){
 }
 
 int main(int argc, const char * argv[]) {
-    set_algorithm_to_be_used(2);
+    //set_algorithm_to_be_used(2);
 	struct timeval start, end;
 	float delta;
 	gettimeofday(&start, NULL);
