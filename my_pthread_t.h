@@ -24,7 +24,7 @@
 #include <time.h>
 #include "memory_manager.h"
 
-#define STACK_SIZE 64*1024
+#define STACK_SIZE 16*4*1024
 #define NUMBER_OF_LEVELS 3
 #define MAX_THREADS 128
 

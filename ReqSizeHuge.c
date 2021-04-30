@@ -4,7 +4,8 @@
 #include <sys/time.h>
 #include <signal.h>
 
-#define SIZE 50000
+#define SIZE 2000
+int algo = 2;
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
 typedef struct dummyStruct {
@@ -39,20 +40,23 @@ int threadFunc1(void*g) {
         busyWait(1);
     }
 
-	dummy *ptrs = (dummy*)malloc(SIZE*sizeof(dummy));
+	dummy * ptrs[SIZE];
 	for(i = 0; i < SIZE; i++){
-        (ptrs + i)->i = 11;
+		ptrs[i] = malloc(sizeof(dummy)*50);
+        printf("New malloc pointer fot thread 1 %p of size %zd\n",ptrs[i],sizeof(dummy));
+        ptrs[i]->i = 11;
+        ptrs[i]->j = 11;
+        ptrs[i]->k = 11;
+        ptrs[i]->l = 11;
+        ptrs[i]->m = 11;
 	}
-    int j=1;
-	while( j < SIZE){
-        printf("I-%d val ->%d\t",j,(ptrs + j)->i);
-        j = j*10;
-	}
-    printf("\n");
 
 	my_pthread_yield();
 
-	free(ptrs);
+	for(i = 0; i < SIZE; i++){	
+        printf("Freeing malloc pointer fot thread 1 %p\n",ptrs[i]);	
+		free(ptrs[i]);
+	}
     global_var2++;
     return 11;
 }
@@ -64,23 +68,25 @@ void threadFunc2() {
     }
     global_var1++;
 
-    dummy * ptrs[SIZE];
-	for(i = 0; i < SIZE; i++){
-		ptrs[i] = malloc(sizeof(dummy));
-        printf("New malloc pointer fot thread 2 %p of size %zd\n",ptrs[i],sizeof(dummy));
-        ptrs[i]->i = 11;
-        ptrs[i]->j = 11;
-        ptrs[i]->k = 11;
-        ptrs[i]->l = 11;
-        ptrs[i]->m = 11;
-	}
+    char * ptr = malloc(4177000);
+    char * temp = ptr;
+
+    (*temp) = 'a';
+    temp += 10000;
+    (*temp) = 'b';
+    temp += 10;
+    (*temp) = 'c';
 
 	my_pthread_yield();
+    temp += 1000000;
+    (*temp) = 'd';
+    temp += 1000000;
+    (*temp) = 'e';
 
-	for(i = 0; i < SIZE; i++){	
-        printf("Freeing malloc pointer fot thread 2 %p\n",ptrs[i]);	
-		free(ptrs[i]);
-	}
+    printf("char ----------------------------- %c\n",*temp);
+
+    temp = ptr;
+    free(ptr);
     printf("Thread  2 EXITING!!!!!!!!\n");
 }
 
@@ -137,8 +143,8 @@ int main(int argc, const char * argv[]) {
     // my_pthread_mutex_init(&mutex2, NULL);
     int *retVal1, *retVal2, *retVal3, *retVal4;
     // Create threads
-    my_pthread_create(t1, NULL, &threadFunc1,NULL);
-    my_pthread_create(t2, NULL, &threadFunc1,NULL);
+    my_pthread_create(t1, NULL, &threadFunc2,NULL);
+    my_pthread_create(t2, NULL, &threadFunc2,NULL);
     // my_pthread_create(&t3, NULL, &threadFunc3,NULL);
     // my_pthread_create(&t4, NULL, &threadFunc4,NULL);
 

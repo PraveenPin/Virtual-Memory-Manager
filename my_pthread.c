@@ -23,7 +23,7 @@ static Queue waitingQueue, finishedQueue;
 static int totalCyclesElapsed = 0;
 static long timeSinceLastMaintenance = 0;
 int lengthOfLeastPriorityQueue = 0;
-
+// extern int algo;
 
 /*List Implementation*/
 int addToTidQueue(unsigned int tid, TidQueue *tidQueue){
@@ -245,7 +245,7 @@ int inheritPriority(){
 						removedThread->priority = tempNode->thread->priority;
 						// printf("Moving Thread %d from Lowest Queue to Queue %d\n",removedThread->id, removedThread->priority);					
 						addToQueue(removedThread,&queue[removedThread->priority]);
-						stateOfQueue(&queue[0]);
+						// stateOfQueue(&queue[0]);
 					}
 			}
 		}
@@ -281,7 +281,7 @@ void scheduleMaintenance(){
 		if(starvingMilliSecs >= 200){ //lengthOfLeastPriorityQueue*BASE_TIME_QUANTA*(NUMBER_OF_LEVELS-2)
 			currentThread->priority = 0;
 			addToQueue(currentThread,&queue[currentThread->priority]);
-			printf("Thread has starved more than the threshold, Inverted Priority of thread %d to 0\n",currentThread->id);
+			// printf("Thread has starved more than the threshold, Inverted Priority of thread %d to 0\n",currentThread->id);
 			if(queue[NUMBER_OF_LEVELS - 1].back == queue[NUMBER_OF_LEVELS - 1].front){
 				queue[NUMBER_OF_LEVELS - 1].front = 0;
 				queue[NUMBER_OF_LEVELS - 1].back = 0;
@@ -362,12 +362,16 @@ void scheduler(int sig){
 		timeSinceLastMaintenance = 0;
 		scheduleMaintenance();
 	}
+
+	// if(algo == 2){
+	// 	updateFreeListForSwapOut(running->id);
+	// }
 	
 	if(running->state == FINISHED){
 		//we have to decide whther to free this or not
 		int nextPreferredQueue = findMaxPriorityQueue();
 				
-		printf("Time spent by exiting thread secs->%lf\tmillisec->%lf\n",running->totalTimeInSecs,running->totalTimeInMilliSecs);
+		// printf("Time spent by exiting thread secs->%lf\tmillisec->%lf\n",running->totalTimeInSecs,running->totalTimeInMilliSecs);
 
 		if(nextPreferredQueue == -1){
 			printf("All the queue are empty\n");
@@ -470,9 +474,9 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 		
 	if(threadCount == 0){
 		//creating main user thread
-		printf("Caling for main thread with req type %d \n",LIBRARYREQ);
+		
 		TCB *mainThread = (TCB*)myallocate(sizeof(TCB), __FILE__,__LINE__, LIBRARYREQ);
-		// printf("Mainthread %p with size %d\n",mainThread,sizeof(TCB));
+		
 		if(mainThread == NULL){
 			printf("Failure to allocate memory for main thread\n");
 			return -1;
@@ -484,7 +488,6 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 			printf("Failure to allocate memory for mainThread context\n");
 			return -1;
 		}
-		// printf("Caling for ucontext %p\n",mainThread->context);
 		
 
 		if(getcontext(mainThread->context) == -1){
@@ -542,6 +545,7 @@ int my_pthread_create(my_pthread_t * tid, pthread_attr_t * attr, void *(*functio
 	thread->hasMutex = 0;
 	thread->firstCycle = 1;
 	thread->front = NULL;
+	// thread->retVal = NULL;
 	thread->priority = 0;
 	thread->timeSpentInMilliSeconds = 0;
 	thread->timeSpentInSeconds = 0;
@@ -616,8 +620,11 @@ void my_pthread_exit(void *value_ptr) {
 	}
 	running->state = FINISHED;
 	if(running->waiting_id >= 0){
-		if(value_ptr != NULL){
+		if(value_ptr != NULL && running->retVal != NULL){
 			*running->retVal = value_ptr;
+		}
+		else{
+			running->retVal = NULL;
 		}
 		//loop the waiting Queue for thread and set state to ready
 		TCB* waitingThread;
@@ -643,7 +650,7 @@ int my_pthread_join(my_pthread_t tid, void **value_ptr) {
 	if(tid > MAX_THREADS){
 		return NO_THREAD_ERROR;
 	}
-	printf("Searching in all queues for Thread %d\n",tid);
+	// printf("Searching in all queues for Thread %d\n",tid);
 	TCB* threadToWaitOn = findThreadByIdInMLFQ(tid);
 	if(threadToWaitOn == NULL){
 		threadToWaitOn = findThreadById(tid, &waitingQueue);
@@ -671,7 +678,7 @@ int my_pthread_join(my_pthread_t tid, void **value_ptr) {
 		printf(stderr,"Cannot wait on itself\n");
 		return -1;
 	}
-	printf("Thread %ld started waiting on thread %ld\n",running->id,threadToWaitOn->id);
+	printf("Thread %d started waiting on thread %d\n",running->id,threadToWaitOn->id);
 	if(threadToWaitOn->waiting_id >= 0 ){
 		printf("Some other thread has joined this thread %d\n",tid);
 		return CANNOT_JOIN_ERROR;
