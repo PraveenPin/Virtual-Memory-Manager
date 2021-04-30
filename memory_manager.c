@@ -19,10 +19,11 @@ MDBlock * libFront = NULL;
 
 /* File descriptor for the swapfile */
 int swapfd;
+int choice = 0;
 extern TCB *running;
 extern unsigned int threadCount;
 unsigned int victimThreshold = 2;
-//Least recently used algorithm 
+//Least recently used algorithm
 int frequencyTrackerForThreadPage[THREAD_PAGES] = {0};
 extern int algorithm_used = 0 ;
 static FreeVictimList freeList;
@@ -203,6 +204,8 @@ int getVictimFrame(int currentTid){
   return 0;
 }
 
+int FIFOlist[THREAD_PAGES] = {0};
+/* TESTING-ONLY FUNCTIONS*/
 
 void set_algorithm_to_be_used(int algorithm){
     algorithm_used = algorithm;
@@ -211,6 +214,7 @@ void set_algorithm_to_be_used(int algorithm){
 int getframeUsingAlgorithm(int tid){
     switch(algorithm_used){
         case 1: return fetchLRUFrameFromMemoryPageTable(); break;
+        case 2: return getFIFOFrameFromMemoryPageTable(); break;
         case 3: return getVictimFrame(tid); break;
         default: return getLRUFrameFromMemoryPageTable();
     }   
@@ -248,7 +252,6 @@ void printMemory(){
   printf("- Blocks End\n");
 }
 
-
 int getLRUFrameFromMemoryPageTable(){
   int frame = 0, tempIndex = 0;
   while(1){
@@ -268,11 +271,31 @@ int getLRUFrameFromMemoryPageTable(){
     else{
       tempIndex++;
     }
-  }    
+  }
 }
 
+int getFIFOFrameFromMemoryPageTable(){
+  //
+    int index = 0;
 
-//Least recently used algorithm 
+    if(index < THREAD_PAGES){
+      if(index < 0){
+        FIFOlist[0] = index;
+        index++;
+      } else if(index == THREAD_PAGES - 1){
+        FIFOlist[0] = index;
+        index++;
+      } else {
+        FIFOlist[index + 1] = index;
+        index++;
+      }
+    } else {
+      index = 0;
+    }
+
+    return index;
+}
+
 int fetchLRUFrameFromMemoryPageTable(){
   int min=frequencyTrackerForThreadPage[0];
   int index = -1;
@@ -305,11 +328,12 @@ void removePages(unsigned int tid){
     if((*ptr).tid == tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
-      ptr->useBit = FALSE; 
-      //Least recently used algorithm 
-      if(algorithm_used == 1){
-        frequencyTrackerForThreadPage[(*ptr).index] = 0; 
-      } 
+      ptr->useBit = FALSE;
+      //Least recently used algorithm
+      switch (algorithm_used) {
+        case 1: frequencyTrackerForThreadPage[(*ptr).index] = 0; break;
+        case 2: FIFOlist[(*ptr).index] = 0; break;
+      }
     }
     ptr += 1;
   }
@@ -320,10 +344,11 @@ void removePages(unsigned int tid){
       (*ptr).tid = -1;
       (*ptr).index = 0;
       ptr->useBit = FALSE;
-      //Least recently used algorithm 
-      if(algorithm_used == 1){
-        frequencyTrackerForThreadPage[(*ptr).index] = 0; 
-      }  
+      //Least recently used algorithm
+      switch (algorithm_used) {
+        case 1: frequencyTrackerForThreadPage[(*ptr).index] = 0; break;
+        case 2: FIFOlist[(*ptr).index] = 0; break;
+      }
     }
     ptr += 1;
   }
@@ -373,13 +398,15 @@ void internalSwapper(unsigned int in, unsigned int out){
   tempPI = MemoryPageTableFront[out];
   MemoryPageTableFront[out] = MemoryPageTableFront[in];
   MemoryPageTableFront[in] = tempPI;
-  //Least recently used algorithm 
-  if(algorithm_used == 1){
-    frequencyTrackerForThreadPage[in] +=1;
+  //Least recently used algorithm
+   switch (algorithm_used) {
+     case 1: frequencyTrackerForThreadPage[in] +=1; break;
+     case 2: FIFOlist[in] += 1; break;
    }
 }
 
 void memoryToSwapFileSwapper(unsigned int in, unsigned int out){
+  printf("*******************************************************************************************%d %d\n",in, out );
   if(in >= THREAD_PAGES || out >= TOTAL_FILE_PAGES){
     // ERROR
     return;
@@ -459,8 +486,8 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   }
 
   tid = running->id;
-  
-  if(accessed < memory || accessed > memory + THREAD_PAGES*PAGE_SIZE){ 
+
+  if(accessed < memory || accessed > memory + THREAD_PAGES*PAGE_SIZE){
     printf("Trying to access memory which is out of bounds (Main Memory)\n");
     // actual segfault
     enableInterrupts();
@@ -477,11 +504,12 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
   }
 
   // Check if we need a swap
-  if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){ 
+  if(MemoryPageTableFront[index].tid == tid && MemoryPageTableFront[index].index == index){
     printf("Accessing its own page => granting access\n");
-    //Least recently used algorithm 
-    if(algorithm_used == 1){
-        frequencyTrackerForThreadPage[index] += 1;
+    //Least recently used algorithm
+    switch (algorithm_used) {
+      case 1: frequencyTrackerForThreadPage[index] +=1; break;
+      case 2: FIFOlist[index] += 1; break;
     }
     mprotect(memory + index*PAGE_SIZE, PAGE_SIZE, PROT_READ | PROT_WRITE); // Un-mempotect and go
     enableInterrupts();
@@ -529,8 +557,8 @@ static void SegFaultHandler(int sig, siginfo_t *si, void *unused) {
     printf("Page Number %d is out of bounds\n",index);
     if(swapIndex == THREAD_PAGES){
       // actual segfault
-      enableInterrupts(); 
-      exit(-1); 
+      enableInterrupts();
+      exit(-1);
     }
     printf("Aborted\n",index);
     exit(-1);
@@ -646,9 +674,10 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       temp->useBit = FALSE;
       temp = temp + 1;
       //Least recently used algorithm
-      if(algorithm_used == 1){
-        frequencyTrackerForThreadPage[i] = 0;
-       }   
+       switch (algorithm_used) {
+         case 1: frequencyTrackerForThreadPage[i] = 0; break;
+         case 2: FIFOlist[i] = 0; break;
+       }
     }
 
     // Clear File Page table space + set table front
@@ -691,13 +720,13 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
 				return -1;
 			}
 			mainThread->id = threadCount++;
-			
+
 			mainThread->context = (ucontext_t*)myallocate(sizeof(ucontext_t), __FILE__,__LINE__, LIBRARYREQ);
 			if(mainThread->context == NULL){
 				printf("Failure to allocate memory for mainThread context\n");
 				return -1;
 			}
-			
+
 
 			if(getcontext(mainThread->context) == -1){
 				printf("Failure to initialise execution context\n");
@@ -861,8 +890,8 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
       }
     }
     else if(freePagesInSwapFile > 0) {
-      //Look for LRU page in memory and swap it with first free page in swapfile 
-      //use this 
+      //Look for LRU page in memory and swap it with first free page in swapfile
+      //use this
       //int frame = getLRUFrameFromMemoryPageTable();
       if(((double)allocationSize/((double)PAGE_SIZE)) <= 1){
         // int frame = getLRUFrameFromMemoryPageTable();
