@@ -4,7 +4,7 @@
 #include <sys/time.h>
 #include <signal.h>
 
-#define SIZE 20000
+#define SIZE 50000
 my_pthread_mutex_t mutex, mutex2;
 int global_var1 = 0, global_var2 = 0;
 typedef struct dummyStruct {

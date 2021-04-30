@@ -731,7 +731,7 @@ void * myallocate(size_t size, char *  file, int line, requestType reqType){
   // Make sure enough space exists for it
   char allow = 'y';
   unsigned int allocationSize = size + (sizeof(MDBlock));
-  if((PAGE_SIZE*(THREAD_PAGES-threadPagesInSwapFile-threadPagesInMemory) < allocationSize) ||
+  if((PAGE_SIZE*(THREAD_PAGES-threadPagesInSwapFile-threadPagesInMemory) < allocationSize) &&
       ((PAGE_SIZE*(freePagesInSwapFile+freePagesInMemory)) < allocationSize)){
         printf("Reuested size %d but space left %d\n",allocationSize,(PAGE_SIZE*(freePagesInSwapFile+freePagesInMemory)));
       allow = 'n';
